@@ -3,19 +3,25 @@ project(cv)
 
 set(CMAKE_CXX_STANDARD 14)
 
-# 1. Находим OpenCV
+# --- МАГИЯ УНИВЕРСАЛЬНОСТИ ---
+# Мы говорим CMake: "Поищи библиотеки в этих стандартных местах Homebrew"
+# Это покрывает и Intel Mac (/usr/local), и Apple Silicon (/opt/homebrew)
+list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew" "/usr/local")
+
+# Теперь ищем OpenCV. Если он установлен через brew, он найдется.
 find_package(OpenCV REQUIRED)
 
-# 2. Подключаем пути к заголовкам
+# Подключаем заголовки
 include_directories(${OpenCV_INCLUDE_DIRS})
+# Подключаем текущую папку (для Camera.h)
+include_directories(.)
 
-# 3. Собираем проект
-# ВАЖНО: Тут мы убрали приставку "src/", так как файлы лежат рядом
+# Собираем проект
 add_executable(cv
         main.cpp
         Camera.cpp
         Camera.h
 )
 
-# 4. Линкуем библиотеки
+# Линкуем библиотеки
 target_link_libraries(cv ${OpenCV_LIBS})
