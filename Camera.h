@@ -1,8 +1,20 @@
-//
-// Created by микдор on 1/3/26.
-//
+#pragma once // Эта строка нужна, чтобы файл не подключился дважды
+#include <opencv2/opencv.hpp> // Подключаем OpenCV
 
-#ifndef CV_CAMERA_H
-#define CV_CAMERA_H
+class Camera {
+private:
+    // Внутренняя переменная OpenCV, отвечающая за захват видео
+    // В документации она называется cv::VideoCapture
+    cv::VideoCapture cap; 
 
-#endif //CV_CAMERA_H
+public:
+    // Конструктор: здесь будем открывать камеру по ID (обычно 0)
+    Camera(); 
+
+    // Деструктор: здесь будем освобождать камеру при закрытии программы
+    ~Camera();
+
+    // Функция, которая возвращает один кадр (картинку)
+    // cv::Mat — это тип данных "Матрица" (картинка) в OpenCV
+    cv::Mat getFrame(); 
+};
