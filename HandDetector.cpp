@@ -44,3 +44,37 @@ cv::Mat HandDetector::detectHand(cv::Mat inputFrame) {
 
     return mask;
 }
+// ... (тут выше ваш старый код detectHand) ...
+
+std::vector<cv::Point> HandDetector::findLargestContour(cv::Mat mask) {
+    // 1. Подготовка хранилища.
+    // Контур — это набор точек.
+    // На картинке может быть много пятен (лицо, рука, лампа).
+    // Поэтому мы создаем "Список Списков Точек".
+    std::vector<std::vector<cv::Point>> allContours;
+
+    // 2. Поиск контуров.
+    // RETR_EXTERNAL: Нас интересуют только внешние границы (не дырки внутри пятна).
+    // CHAIN_APPROX_SIMPLE: Экономия памяти. Если линия прямая, храним только начало и конец.
+    cv::findContours(mask, allContours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    // 3. Выборы "Короля горы".
+    // Нам нужно найти самый большой контур.
+    std::vector<cv::Point> biggestContour;
+    double maxArea = 0;
+
+    for (int i = 0; i < allContours.size(); i++) {
+        // Вычисляем площадь текущего пятна
+        double area = cv::contourArea(allContours[i]);
+
+        // Фильтр шума: если пятно меньше 1000 пикселей — игнорируем его
+        // Если пятно больше предыдущего лидера — запоминаем его.
+        if (area > maxArea && area > 1000) {
+            maxArea = area;
+            biggestContour = allContours[i];
+        }
+    }
+
+    // Возвращаем победителя (самое большое пятно)
+    return biggestContour;
+}
