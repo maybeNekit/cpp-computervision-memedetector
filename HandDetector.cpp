@@ -16,8 +16,8 @@ cv::Mat HandDetector::detectHand(cv::Mat inputFrame) {
     // S (Насыщенность): 30-255 (от бледного до сочного)
     // V (Яркость): 50-255 (от темного до светлого, исключая совсем черноту)
 
-    cv::Scalar lower(0, 30, 60);
-    cv::Scalar upper(20, 150, 255);
+    cv::Scalar lower(0, 70, 60);
+    cv::Scalar upper(20, 130, 255);
 
     // 3. Создаем маску
     // Функция inRange проверяет каждый пиксель:
@@ -25,8 +25,21 @@ cv::Mat HandDetector::detectHand(cv::Mat inputFrame) {
     // Если нет -> делает его ЧЕРНЫМ (0).
     cv::inRange(hsvImage, lower, upper, mask);
 
-    // 4. Немного размываем, чтобы убрать шум (мелкие точки)
-    // Это называется "Размытие Гаусса"
+    // --- ДОБАВЛЯЕМ ЧИСТКУ (МОРФОЛОГИЮ) ---
+
+    // 1. Создаем "ядро" (инструмент, которым будем чистить)
+    // Размер 5x5 пикселей - оптимально для веб-камеры
+    cv::Mat element = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
+
+    // 2. ERODE: Убираем мелкий шум (белые точки исчезнут)
+    cv::erode(mask, mask, element);
+    cv::erode(mask, mask, element); // Делаем дважды для надежности
+
+    // 3. DILATE: Возвращаем объем руке и убираем дырки внутри нее
+    cv::dilate(mask, mask, element);
+    cv::dilate(mask, mask, element);
+
+    // 4. Размытие (оставляем как было)
     cv::GaussianBlur(mask, mask, cv::Size(5, 5), 0);
 
     return mask;
