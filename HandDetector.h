@@ -1,16 +1,18 @@
 #pragma once
 #include <opencv2/opencv.hpp>
-#include <vector> // <--- ОБЯЗАТЕЛЬНО: Подключаем библиотеку для списков
+#include <vector>
 
 class HandDetector {
+private:
+    cv::CascadeClassifier faceDetector; // Детектор лиц
+
 public:
-    HandDetector();
+    HandDetector(); // Тут будем загружать детектор
     ~HandDetector();
 
-    // Старая функция: делает картинку черно-белой
+    // Эта функция теперь будет сама удалять лицо
     cv::Mat detectHand(cv::Mat inputFrame);
 
-    // НОВАЯ ФУНКЦИЯ: Ищет контуры
-    // Возвращает список точек (x, y), которые образуют контур руки
-    std::vector<cv::Point> findLargestContour(cv::Mat mask);
+    // А эта будет просто искать самый большой объект (руку)
+    std::vector<cv::Point> findHandContour(cv::Mat mask);
 };

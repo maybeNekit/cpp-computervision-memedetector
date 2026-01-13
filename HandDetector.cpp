@@ -1,80 +1,84 @@
 #include "HandDetector.h"
+#include <iostream>
 
-HandDetector::HandDetector() {}
+HandDetector::HandDetector() {
+
+    std::string path = "/Users/nick/Documents/Code/с++/cv/haarcascade_frontalface_default.xml";
+    // ЗАГРУЗКА КАСКАДА
+    // ВАЖНО: Если программа падает, укажи здесь ПОЛНЫЙ ПУТЬ к файлу xml
+    // Например: "/Users/твое_имя/Projects/cv/haarcascade_frontalface_default.xml"
+    if (!faceDetector.load(path)) {
+        // Попробуем загрузить из стандартной папки (для Mac/Linux иногда срабатывает)
+        if (!faceDetector.load(path)) {
+             std::cerr << "CRITICAL ERROR: XML файл не найден! Лицо не будет удалено." << std::endl;
+        }
+    }
+}
+
 HandDetector::~HandDetector() {}
 
 cv::Mat HandDetector::detectHand(cv::Mat inputFrame) {
-    cv::Mat hsvImage;
-    cv::Mat mask;
-
-    // 1. Конвертируем из BGR (стандарт OpenCV) в HSV
+    cv::Mat hsvImage, mask;
     cv::cvtColor(inputFrame, hsvImage, cv::COLOR_BGR2HSV);
 
-    // 2. Указываем диапазон цвета кожи в формате HSV
-    // Эти цифры (Scalar) — нижняя и верхняя граница цвета.
-    // H (Оттенок): 0-20 (это оранжево-красные тона)
-    // S (Насыщенность): 30-255 (от бледного до сочного)
-    // V (Яркость): 50-255 (от темного до светлого, исключая совсем черноту)
-
-    cv::Scalar lower(0, 70, 60);
-    cv::Scalar upper(20, 130, 255);
-
-    // 3. Создаем маску
-    // Функция inRange проверяет каждый пиксель:
-    // Если он входит в диапазон -> делает его БЕЛЫМ (255).
-    // Если нет -> делает его ЧЕРНЫМ (0).
+    // 1. ЦВЕТ (Твои рабочие настройки)
+    cv::Scalar lower(0, 90, 80);
+    cv::Scalar upper(20, 170, 255);
     cv::inRange(hsvImage, lower, upper, mask);
 
-    // --- ДОБАВЛЯЕМ ЧИСТКУ (МОРФОЛОГИЮ) ---
-
-    // 1. Создаем "ядро" (инструмент, которым будем чистить)
-    // Размер 5x5 пикселей - оптимально для веб-камеры
-    cv::Mat element = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
-
-    // 2. ERODE: Убираем мелкий шум (белые точки исчезнут)
-    cv::erode(mask, mask, element);
-    cv::erode(mask, mask, element); // Делаем дважды для надежности
-
-    // 3. DILATE: Возвращаем объем руке и убираем дырки внутри нее
-    cv::dilate(mask, mask, element);
-    cv::dilate(mask, mask, element);
-
-    // 4. Размытие (оставляем как было)
+    // 2. ЧИСТКА ШУМА
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
+    cv::morphologyEx(mask, mask, cv::MORPH_OPEN, kernel);
+    cv::dilate(mask, mask, kernel, cv::Point(-1,-1), 2);
     cv::GaussianBlur(mask, mask, cv::Size(5, 5), 0);
+
+    // 3. УДАЛЕНИЕ ЛИЦА (Самое важное!)
+    // Мы ищем лицо на оригинальном кадре и стираем его с маски.
+
+    std::vector<cv::Rect> faces;
+    cv::Mat gray;
+    cv::cvtColor(inputFrame, gray, cv::COLOR_BGR2GRAY);
+
+    // Ищем лица (scaleFactor=1.1, minNeighbors=4)
+    faceDetector.detectMultiScale(gray, faces, 1.1, 4, 0, cv::Size(60, 60));
+
+    for (size_t i = 0; i < faces.size(); i++) {
+        // Расширяем зону удаления (чтобы стереть шею и прическу)
+        cv::Rect faceRect = faces[i];
+
+        // Чуть увеличиваем квадрат удаления
+        int padding = 40;
+        faceRect.x = std::max(0, faceRect.x - padding);
+        faceRect.y = std::max(0, faceRect.y - padding);
+        faceRect.width += padding * 2;
+        faceRect.height += padding * 3; // Вниз берем больше (шея)
+
+        // РИСУЕМ ЧЕРНЫЙ КВАДРАТ НА МАСКЕ
+        // Это полностью стирает лицо из расчетов
+        cv::rectangle(mask, faceRect, cv::Scalar(0), -1);
+    }
 
     return mask;
 }
-// ... (тут выше ваш старый код detectHand) ...
 
-std::vector<cv::Point> HandDetector::findLargestContour(cv::Mat mask) {
-    // 1. Подготовка хранилища.
-    // Контур — это набор точек.
-    // На картинке может быть много пятен (лицо, рука, лампа).
-    // Поэтому мы создаем "Список Списков Точек".
-    std::vector<std::vector<cv::Point>> allContours;
+std::vector<cv::Point> HandDetector::findHandContour(cv::Mat mask) {
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
-    // 2. Поиск контуров.
-    // RETR_EXTERNAL: Нас интересуют только внешние границы (не дырки внутри пятна).
-    // CHAIN_APPROX_SIMPLE: Экономия памяти. Если линия прямая, храним только начало и конец.
-    cv::findContours(mask, allContours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
-
-    // 3. Выборы "Короля горы".
-    // Нам нужно найти самый большой контур.
-    std::vector<cv::Point> biggestContour;
+    std::vector<cv::Point> bestContour;
     double maxArea = 0;
 
-    for (int i = 0; i < allContours.size(); i++) {
-        // Вычисляем площадь текущего пятна
-        double area = cv::contourArea(allContours[i]);
+    for (int i = 0; i < contours.size(); i++) {
+        double area = cv::contourArea(contours[i]);
 
-        // Фильтр шума: если пятно меньше 1000 пикселей — игнорируем его
-        // Если пятно больше предыдущего лидера — запоминаем его.
-        if (area > maxArea && area > 1000) {
+        // Теперь нам не нужны сложные проверки на Solidity!
+        // Лица на маске нет. Самый большой объект - это рука.
+        // Просто фильтруем мелкий шум.
+        if (area > maxArea && area > 2000) {
             maxArea = area;
-            biggestContour = allContours[i];
+            bestContour = contours[i];
         }
     }
 
-    // Возвращаем победителя (самое большое пятно)
-    return biggestContour;
+    return bestContour;
 }
