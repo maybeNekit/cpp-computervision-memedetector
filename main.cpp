@@ -41,21 +41,15 @@ int main() {
 
         Mat mask = detector.detectHand(frame);
 
-        // Морфология
         Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(7, 7));
         morphologyEx(mask, mask, MORPH_CLOSE, kernel);
 
-        // 1. Находим сырой контур
         vector<Point> rawContour = detector.findHandContour(mask);
-
-        int currentFrameFingers = 0;
-
-        // Объявляем handContour здесь, чтобы он был доступен, если понадобится
         vector<Point> handContour;
+        int currentFrameFingers = 0;
 
         if (!rawContour.empty()) {
 
-            // СГЛАЖИВАНИЕ (УТЮГ)
             approxPolyDP(rawContour, handContour, 3.0, true);
 
             double rawPalmRadius = 0;
@@ -68,7 +62,6 @@ int main() {
                 avgPalmRadius = (avgPalmRadius * 0.6) + (rawPalmRadius * 0.4);
             }
 
-            // Рисуем ладонь
             circle(frame, palmCenter, (int)avgPalmRadius, Scalar(0, 255, 255), 2);
 
             vector<int> hullIndices;
@@ -84,7 +77,6 @@ int main() {
                 } catch (...) {}
             }
 
-            // Адаптивный круг
             double rawMaxDist = 0;
             for (const auto& pt : hullPoints) {
                 double d = getDist(pt, palmCenter);
@@ -95,81 +87,88 @@ int main() {
 
             double fingerRegion = avgMaxDist - avgPalmRadius;
             double cutoffRadius = avgPalmRadius + (fingerRegion * 0.5);
-            cutoffRadius = std::max(cutoffRadius, avgPalmRadius * 1.3);
+
+            cutoffRadius = std::max(cutoffRadius, avgPalmRadius * 1.5);
 
             circle(frame, palmCenter, (int)cutoffRadius, Scalar(255, 0, 0), 1);
 
-            // БЛОК 1: ПОДСЧЕТ ВПАДИН
-            vector<Point> validGaps;
-
-            for (size_t i = 0; i < defects.size(); i++) {
-                Point p_start = handContour[defects[i][0]];
-                Point p_end = handContour[defects[i][1]];
-                Point p_far = handContour[defects[i][2]];
-                double depth = defects[i][3] / 256.0;
-
-                if (depth < avgPalmRadius * 0.35) continue;
-                if (p_far.y > palmCenter.y + avgPalmRadius) continue;
-
-                double distStart = getDist(p_start, palmCenter);
-                double distEnd = getDist(p_end, palmCenter);
-                if (distStart < cutoffRadius || distEnd < cutoffRadius) continue;
-
-                double angle = getAngle(p_start, p_far, p_end);
-                double tipDistance = getDist(p_start, p_end);
-
-                bool isStandardGap = (angle < 95);
-                bool isThumbGap = (angle >= 95 && angle < 125 && tipDistance > avgPalmRadius);
-
-                if (isStandardGap || isThumbGap) {
-                    bool isDuplicate = false;
-                    for(const auto& existingGap : validGaps) {
-                        if (getDist(p_far, existingGap) < 20) {
-                            isDuplicate = true;
-                            break;
-                        }
-                    }
-
-                    if (!isDuplicate) {
-                        validGaps.push_back(p_far);
-                        circle(frame, p_far, 6, Scalar(0, 255, 0), -1);
-                        line(frame, p_start, p_far, Scalar(0, 255, 0), 1);
-                        line(frame, p_end, p_far, Scalar(0, 255, 0), 1);
-                    }
-                }
-            }
-
-            int defectsCount = validGaps.size();
-
-            // БЛОК 2: КУЛАК ИЛИ 1 ПАЛЕЦ
-            if (defectsCount == 0) {
-                double areaContour = contourArea(handContour);
-                double areaHull = contourArea(hullPoints);
-                double solidity = areaContour / areaHull;
-
-                Point topPoint = palmCenter;
-                double maxD = 0;
-                for (int idx : hullIndices) {
-                    Point pt = handContour[idx];
-                    if (pt.y > palmCenter.y) continue;
-                    double d = norm(pt - palmCenter);
-                    if (d > maxD) { maxD = d; topPoint = pt; }
-                }
-
-                if (solidity < 0.95 && maxD > cutoffRadius) {
-                     currentFrameFingers = 1;
-                     line(frame, palmCenter, topPoint, Scalar(0, 255, 0), 2);
-                } else {
-                     currentFrameFingers = 0;
-                }
+            if (avgMaxDist < avgPalmRadius * 1.5) {
+                currentFrameFingers = 0;
             }
             else {
-                currentFrameFingers = defectsCount + 1;
+                vector<Point> validGaps;
+
+                for (size_t i = 0; i < defects.size(); i++) {
+                    Point p_start = handContour[defects[i][0]];
+                    Point p_end = handContour[defects[i][1]];
+                    Point p_far = handContour[defects[i][2]];
+                    double depth = defects[i][3] / 256.0;
+
+                    if (depth < avgPalmRadius * 0.35) continue;
+                    if (p_far.y > palmCenter.y + avgPalmRadius) continue;
+
+                    double distStart = getDist(p_start, palmCenter);
+                    double distEnd = getDist(p_end, palmCenter);
+                    if (distStart < cutoffRadius || distEnd < cutoffRadius) continue;
+
+                    double angle = getAngle(p_start, p_far, p_end);
+                    double tipDistance = getDist(p_start, p_end);
+
+                    bool isStandardGap = (angle < 95);
+                    bool isThumbGap = (angle >= 95 && angle < 125 && tipDistance > avgPalmRadius);
+
+                    if (isStandardGap || isThumbGap) {
+                        bool isDuplicate = false;
+                        for(const auto& existingGap : validGaps) {
+                            if (getDist(p_far, existingGap) < 20) {
+                                isDuplicate = true;
+                                break;
+                            }
+                        }
+
+                        if (!isDuplicate) {
+                            validGaps.push_back(p_far);
+                            circle(frame, p_far, 6, Scalar(0, 255, 0), -1);
+                        }
+                    }
+                }
+
+                int defectsCount = validGaps.size();
+
+                if (defectsCount == 0) {
+                    vector<Point> extendedFingers;
+
+                    for (const auto& pt : hullPoints) {
+                        if (pt.y > palmCenter.y + avgPalmRadius) continue;
+
+                        if (getDist(pt, palmCenter) > cutoffRadius) {
+
+                            bool isNew = true;
+                            for (const auto& existingFinger : extendedFingers) {
+                                if (getDist(pt, existingFinger) < avgPalmRadius * 0.5) {
+                                    isNew = false;
+                                    break;
+                                }
+                            }
+
+                            if (isNew) {
+                                extendedFingers.push_back(pt);
+                            }
+                        }
+                    }
+                    currentFrameFingers = extendedFingers.size();
+
+                    for(const auto& pt : extendedFingers) {
+                        line(frame, palmCenter, pt, Scalar(0, 255, 0), 2);
+                    }
+                }
+                else {
+                    currentFrameFingers = defectsCount + 1;
+                }
             }
 
             if (currentFrameFingers > 5) currentFrameFingers = 5;
 
-            // Отрисовка
             vector<vector<Point>> contours = {handContour};
             drawContours(frame, contours, 0, Scalar(100, 100, 100), 1);
         }
@@ -178,7 +177,6 @@ int main() {
             currentFrameFingers = 0;
         }
 
-        // БЛОК 3: ГОЛОСОВАНИЕ (Исправлено под C++14)
         fingerHistory.push_back(currentFrameFingers);
         if (fingerHistory.size() > bufferSize) fingerHistory.pop_front();
 
@@ -187,12 +185,9 @@ int main() {
 
         int maxVotes = 0;
         int winner = 0;
-
-        // Исправленный цикл for для C++14 (без structured binding)
         for (auto const& item : votes) {
             int fingerCount = item.first;
             int voteCount = item.second;
-
             if (voteCount > maxVotes) {
                 maxVotes = voteCount;
                 winner = fingerCount;
@@ -203,15 +198,13 @@ int main() {
         if (maxVotes > threshold) {
             displayedFingers = winner;
         }
-
-        // Исправленная проверка на пустую руку (используем rawContour)
         if (rawContour.empty()) displayedFingers = 0;
 
         string info = "Fingers: " + to_string(displayedFingers);
         Scalar textColor = (displayedFingers > 0) ? ((maxVotes > 8) ? Scalar(0, 255, 0) : Scalar(0, 255, 255)) : Scalar(0, 0, 255);
         putText(frame, info, Point(30, 50), FONT_HERSHEY_SIMPLEX, 1.5, textColor, 3);
 
-        imshow("Hand Tracker (Final Fix)", frame);
+        imshow("Hand Tracker (Fist Fix)", frame);
         if (waitKey(1) == 27) break;
     }
     return 0;
