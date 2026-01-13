@@ -3,7 +3,7 @@
 
 HandDetector::HandDetector() {
 
-    std::string path = "/Users/nick/Documents/Code/с++/cv/haarcascade_frontalface_default.xml";
+    std::string path = "haarcascade_frontalface_default.xml";
     // ЗАГРУЗКА КАСКАДА
     // ВАЖНО: Если программа падает, укажи здесь ПОЛНЫЙ ПУТЬ к файлу xml
     // Например: "/Users/твое_имя/Projects/cv/haarcascade_frontalface_default.xml"
@@ -22,8 +22,8 @@ cv::Mat HandDetector::detectHand(cv::Mat inputFrame) {
     cv::cvtColor(inputFrame, hsvImage, cv::COLOR_BGR2HSV);
 
     // 1. ЦВЕТ (Твои рабочие настройки)
-    cv::Scalar lower(0, 90, 80);
-    cv::Scalar upper(20, 170, 255);
+    cv::Scalar lower(0, 70, 80);
+    cv::Scalar upper(20, 130, 255);
     cv::inRange(hsvImage, lower, upper, mask);
 
     // 2. ЧИСТКА ШУМА
