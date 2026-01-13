@@ -82,3 +82,22 @@ std::vector<cv::Point> HandDetector::findHandContour(cv::Mat mask) {
 
     return bestContour;
 }
+
+cv::Point HandDetector::getPalmCenter(cv::Mat mask, double &radius) {
+    if (mask.empty()) return cv::Point(0, 0);
+
+    cv::Mat dist;
+    // Вычисляем расстояние от каждого пикселя до ближайшего черного пикселя
+    cv::distanceTransform(mask, dist, cv::DIST_L2, 5);
+
+    int maxIdx[2];    // Координаты
+    double maxVal;    // Максимальное значение (это и есть радиус)
+
+    // Находим точку с максимальным значением (центр ладони)
+    cv::minMaxIdx(dist, 0, &maxVal, 0, maxIdx);
+
+    radius = maxVal; // Записываем радиус
+
+    // Возвращаем координаты (x, y)
+    return cv::Point(maxIdx[1], maxIdx[0]);
+}

@@ -4,15 +4,16 @@
 
 class HandDetector {
 private:
-    cv::CascadeClassifier faceDetector; // Детектор лиц
+    cv::CascadeClassifier faceDetector;
 
 public:
-    HandDetector(); // Тут будем загружать детектор
+    HandDetector();
     ~HandDetector();
 
-    // Эта функция теперь будет сама удалять лицо
     cv::Mat detectHand(cv::Mat inputFrame);
-
-    // А эта будет просто искать самый большой объект (руку)
     std::vector<cv::Point> findHandContour(cv::Mat mask);
+
+    // НОВОЕ: Находит центр ладони и её радиус (вернет точку центра)
+    // radius - это выходной параметр (мы запишем туда число)
+    cv::Point getPalmCenter(cv::Mat mask, double &radius);
 };
