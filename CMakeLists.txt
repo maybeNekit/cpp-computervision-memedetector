@@ -22,6 +22,7 @@ add_executable(cv
         Camera.cpp
         Camera.h
         negr.cpp
+        qwertty.cpp
 )
 
 # Линкуем библиотеки
