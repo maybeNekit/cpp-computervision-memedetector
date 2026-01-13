@@ -21,6 +21,7 @@ add_executable(cv
         main.cpp
         Camera.cpp
         Camera.h
+        negr.cpp
 )
 
 # Линкуем библиотеки
