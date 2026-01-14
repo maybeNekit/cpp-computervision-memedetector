@@ -13,5 +13,7 @@ public:
     cv::Mat detectHand(cv::Mat inputFrame);
     std::vector<cv::Point> findHandContour(cv::Mat mask);
 
+    // НОВОЕ: Находит центр ладони и её радиус (вернет точку центра)
+    // radius - это выходной параметр (мы запишем туда число)
     cv::Point getPalmCenter(cv::Mat mask, double &radius);
 };

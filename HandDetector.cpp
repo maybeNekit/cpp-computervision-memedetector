@@ -2,10 +2,15 @@
 #include <iostream>
 
 HandDetector::HandDetector() {
+
     std::string path = "haarcascade_frontalface_default.xml";
+    // ЗАГРУЗКА КАСКАДА
+    // ВАЖНО: Если программа падает, укажи здесь ПОЛНЫЙ ПУТЬ к файлу xml
+    // Например: "/Users/твое_имя/Projects/cv/haarcascade_frontalface_default.xml"
     if (!faceDetector.load(path)) {
+        // Попробуем загрузить из стандартной папки (для Mac/Linux иногда срабатывает)
         if (!faceDetector.load(path)) {
-             std::cerr << "WARNING: XML файл лица не найден! Лицо не будет удалено." << std::endl;
+             std::cerr << "CRITICAL ERROR: XML файл не найден! Лицо не будет удалено." << std::endl;
         }
     }
 }
@@ -16,33 +21,40 @@ cv::Mat HandDetector::detectHand(cv::Mat inputFrame) {
     cv::Mat hsvImage, mask;
     cv::cvtColor(inputFrame, hsvImage, cv::COLOR_BGR2HSV);
 
-    cv::Scalar lower(0, 65, 70);
-    cv::Scalar upper(20, 150, 255);
+    // 1. ЦВЕТ (Твои рабочие настройки)
+    cv::Scalar lower(0, 70, 80);
+    cv::Scalar upper(20, 130, 255);
     cv::inRange(hsvImage, lower, upper, mask);
 
-    cv::Mat kernelSmall = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3, 3));
-    cv::morphologyEx(mask, mask, cv::MORPH_OPEN, kernelSmall);
-
-    cv::Mat kernelBig = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(9, 9));
-    cv::morphologyEx(mask, mask, cv::MORPH_CLOSE, kernelBig);
-
-    cv::dilate(mask, mask, kernelSmall, cv::Point(-1,-1), 1);
-
+    // 2. ЧИСТКА ШУМА
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
+    cv::morphologyEx(mask, mask, cv::MORPH_OPEN, kernel);
+    cv::dilate(mask, mask, kernel, cv::Point(-1,-1), 2);
     cv::GaussianBlur(mask, mask, cv::Size(5, 5), 0);
+
+    // 3. УДАЛЕНИЕ ЛИЦА (Самое важное!)
+    // Мы ищем лицо на оригинальном кадре и стираем его с маски.
 
     std::vector<cv::Rect> faces;
     cv::Mat gray;
     cv::cvtColor(inputFrame, gray, cv::COLOR_BGR2GRAY);
 
+    // Ищем лица (scaleFactor=1.1, minNeighbors=4)
     faceDetector.detectMultiScale(gray, faces, 1.1, 4, 0, cv::Size(60, 60));
 
     for (size_t i = 0; i < faces.size(); i++) {
+        // Расширяем зону удаления (чтобы стереть шею и прическу)
         cv::Rect faceRect = faces[i];
+
+        // Чуть увеличиваем квадрат удаления
         int padding = 40;
         faceRect.x = std::max(0, faceRect.x - padding);
         faceRect.y = std::max(0, faceRect.y - padding);
         faceRect.width += padding * 2;
-        faceRect.height += padding * 3;
+        faceRect.height += padding * 3; // Вниз берем больше (шея)
+
+        // РИСУЕМ ЧЕРНЫЙ КВАДРАТ НА МАСКЕ
+        // Это полностью стирает лицо из расчетов
         cv::rectangle(mask, faceRect, cv::Scalar(0), -1);
     }
 
@@ -58,11 +70,16 @@ std::vector<cv::Point> HandDetector::findHandContour(cv::Mat mask) {
 
     for (int i = 0; i < contours.size(); i++) {
         double area = cv::contourArea(contours[i]);
+
+        // Теперь нам не нужны сложные проверки на Solidity!
+        // Лица на маске нет. Самый большой объект - это рука.
+        // Просто фильтруем мелкий шум.
         if (area > maxArea && area > 2000) {
             maxArea = area;
             bestContour = contours[i];
         }
     }
+
     return bestContour;
 }
 
@@ -70,12 +87,17 @@ cv::Point HandDetector::getPalmCenter(cv::Mat mask, double &radius) {
     if (mask.empty()) return cv::Point(0, 0);
 
     cv::Mat dist;
+    // Вычисляем расстояние от каждого пикселя до ближайшего черного пикселя
     cv::distanceTransform(mask, dist, cv::DIST_L2, 5);
 
-    int maxIdx[2];
-    double maxVal;
+    int maxIdx[2];    // Координаты
+    double maxVal;    // Максимальное значение (это и есть радиус)
+
+    // Находим точку с максимальным значением (центр ладони)
     cv::minMaxIdx(dist, 0, &maxVal, 0, maxIdx);
 
-    radius = maxVal;
+    radius = maxVal; // Записываем радиус
+
+    // Возвращаем координаты (x, y)
     return cv::Point(maxIdx[1], maxIdx[0]);
 }
