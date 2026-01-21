@@ -272,7 +272,6 @@ int main() {
             processHandInROI(frame, rectLeft, detector, leftHandState);
             processHandInROI(frame, rectRight, detector, rightHandState);
 
-
             Scalar colorL = (leftHandState.displayedFingers > 0) ? Scalar(0, 255, 0) : Scalar(0, 0, 255);
             putText(frame, to_string(leftHandState.displayedFingers),
                     rectLeft.tl() + Point(20, -20), FONT_HERSHEY_SIMPLEX, 2, colorL, 4);
@@ -281,17 +280,30 @@ int main() {
             putText(frame, to_string(rightHandState.displayedFingers),
                     rectRight.tl() + Point(20, -20), FONT_HERSHEY_SIMPLEX, 2, colorR, 4);
 
-
             int totalSum = leftHandState.displayedFingers + rightHandState.displayedFingers;
             string sumText = to_string(totalSum);
 
             int sumFontFace = FONT_HERSHEY_SIMPLEX;
-            double sumFontScale = 5.0;
-            int sumThickness = 6;
-            Size sumSize = getTextSize(sumText, sumFontFace, sumFontScale, sumThickness, 0);
+            double sumFontScale = 4.0;
+            int sumThickness = 5;
+            int baseLine = 0;
+            Size sumSize = getTextSize(sumText, sumFontFace, sumFontScale, sumThickness, &baseLine);
 
-            Point sumOrg(w/2 - sumSize.width/2, h - boxSize/2);
+            int boxPadX = 40;
+            int boxPadY = 25;
+            int boxW = sumSize.width + boxPadX * 2;
+            int boxH = sumSize.height + boxPadY * 2 + baseLine;
 
+            int boxX = w / 2 - boxW / 2;
+            int boxY = 30;
+
+            Rect sumRect(boxX, boxY, boxW, boxH);
+
+            rectangle(frame, sumRect, Scalar(50, 50, 50), -1);
+            rectangle(frame, sumRect, Scalar(0, 215, 255), 4);
+            rectangle(frame, sumRect + Size(5,5) - Point(5,5), Scalar(0, 255, 255), 1);
+
+            Point sumOrg(boxX + boxPadX, boxY + boxPadY + sumSize.height);
             putText(frame, sumText, sumOrg, sumFontFace, sumFontScale, Scalar(0, 255, 255), sumThickness);
 
             bool isExitPressed = checkButtonPress(frame, exitBtn.rect, detector);
