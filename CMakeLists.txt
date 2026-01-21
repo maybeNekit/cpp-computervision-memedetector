@@ -15,6 +15,8 @@ add_executable(cv
         Camera.cpp
         Camera.h
         HandDetector.cpp
+        MemeDetector.h
+        MemeDetector.cpp
 )
 
 target_link_libraries(cv ${OpenCV_LIBS})

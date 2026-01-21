@@ -7,18 +7,21 @@
 #include <map>
 #include "Camera.h"
 #include "HandDetector.h"
+#include "MemeDetector.h"
 
 using namespace cv;
 using namespace std;
 
 enum AppState {
-    STATE_MENU,
-    STATE_ACTIVE
+    STATE_START_SCREEN,
+    STATE_MATH,
+    STATE_MEME
 };
 
 struct HandState {
     deque<int> fingerHistory;
     deque<double> radiusBuffer;
+    deque<Point> positionHistory;
     static const int bufferLimit = 100;
 
     Point smoothCenter = Point(0, 0);
@@ -26,6 +29,16 @@ struct HandState {
     bool isFirstFrame = true;
 
     int displayedFingers = 0;
+
+    void reset() {
+        fingerHistory.clear();
+        radiusBuffer.clear();
+        positionHistory.clear();
+        smoothCenter = Point(0, 0);
+        smoothRadius = 0;
+        isFirstFrame = true;
+        displayedFingers = 0;
+    }
 };
 
 double getAngle(Point s, Point f, Point e) {
@@ -49,23 +62,24 @@ bool checkButtonPress(Mat &frame, Rect btnRect, HandDetector &detector) {
     return (skinPixels > 60);
 }
 
-void processHandInROI(Mat &frame, Rect roiRect, HandDetector &detector, HandState &state) {
+void processHandInROI(Mat &frame, Rect roiRect, Mat &maskROI, HandDetector &detector, HandState &state, bool drawBox) {
     roiRect = roiRect & Rect(0, 0, frame.cols, frame.rows);
     if (roiRect.area() == 0) return;
+    if (maskROI.empty()) return;
 
-    Mat roiFrame = frame(roiRect);
-    Mat mask = detector.detectHand(roiFrame);
-    vector<Point> rawContour = detector.findHandContour(mask);
+    vector<Point> rawContour = detector.findHandContour(maskROI);
     int currentFingers = 0;
 
-    rectangle(frame, roiRect, Scalar(200, 200, 200), 2);
+    if (drawBox) {
+        rectangle(frame, roiRect, Scalar(200, 200, 200), 2);
+    }
 
     if (!rawContour.empty()) {
         vector<Point> handContour;
         for(auto pt : rawContour) handContour.push_back(pt + roiRect.tl());
 
         double rawRadius = 0;
-        Point localCenter = detector.getPalmCenter(mask, rawRadius);
+        Point localCenter = detector.getPalmCenter(maskROI, rawRadius);
         Point globalCenter = localCenter + roiRect.tl();
 
         state.radiusBuffer.push_back(rawRadius);
@@ -87,8 +101,10 @@ void processHandInROI(Mat &frame, Rect roiRect, HandDetector &detector, HandStat
             state.smoothCenter.y = (int)(state.smoothCenter.y * (1 - speed) + globalCenter.y * speed);
         }
 
-        circle(frame, state.smoothCenter, (int)rawRadius, Scalar(0, 255, 255), 1);
+        state.positionHistory.push_back(state.smoothCenter);
+        if (state.positionHistory.size() > 20) state.positionHistory.pop_front();
 
+        circle(frame, state.smoothCenter, (int)rawRadius, Scalar(0, 255, 255), 1);
         double protectionRadius = state.smoothRadius * 1.75;
         circle(frame, state.smoothCenter, (int)protectionRadius, Scalar(255, 0, 0), 2);
 
@@ -109,10 +125,7 @@ void processHandInROI(Mat &frame, Rect roiRect, HandDetector &detector, HandStat
             for (int idx : hullIndices) {
                 Point pt = handContour[idx];
                 if (pt.y > state.smoothCenter.y + state.smoothRadius) continue;
-
-                if (getDist(pt, state.smoothCenter) > protectionRadius) {
-                    candidates.push_back(pt);
-                }
+                if (getDist(pt, state.smoothCenter) > protectionRadius) candidates.push_back(pt);
             }
 
             sort(candidates.begin(), candidates.end(), [&](Point a, Point b) {
@@ -123,18 +136,10 @@ void processHandInROI(Mat &frame, Rect roiRect, HandDetector &detector, HandStat
             for (Point p : candidates) {
                 bool isDuplicate = false;
                 for (Point existing : peaks) {
-                    if (getDist(p, existing) < state.smoothRadius * 0.8) {
-                        isDuplicate = true;
-                        break;
-                    }
-                    if (getAngle(p, state.smoothCenter, existing) < 25) {
-                        isDuplicate = true;
-                        break;
-                    }
+                    if (getDist(p, existing) < state.smoothRadius * 0.8) { isDuplicate = true; break; }
+                    if (getAngle(p, state.smoothCenter, existing) < 25) { isDuplicate = true; break; }
                 }
-                if (!isDuplicate) {
-                    peaks.push_back(p);
-                }
+                if (!isDuplicate) peaks.push_back(p);
             }
 
             vector<Vec4i> defects;
@@ -147,16 +152,12 @@ void processHandInROI(Mat &frame, Rect roiRect, HandDetector &detector, HandStat
                 Point p_end = handContour[defects[i][1]];
                 Point p_far = handContour[defects[i][2]];
                 double depth = defects[i][3] / 256.0;
-
                 if (depth < state.smoothRadius * 0.4) continue;
                 if (p_far.y > state.smoothCenter.y + state.smoothRadius) continue;
-
                 if (getAngle(p_start, p_far, p_end) < 95) validDefects++;
             }
 
-            if (validDefects >= 1) {
-                currentFingers = validDefects + 1;
-            }
+            if (validDefects >= 1) currentFingers = validDefects + 1;
             else {
                 int pCount = peaks.size();
                 if (pCount >= 2) {
@@ -167,13 +168,9 @@ void processHandInROI(Mat &frame, Rect roiRect, HandDetector &detector, HandStat
                     if (solidity < 0.92) {
                         currentFingers = 1;
                         line(frame, state.smoothCenter, peaks[0], Scalar(0, 255, 0), 2);
-                    } else {
-                        currentFingers = 0;
-                    }
+                    } else currentFingers = 0;
                 }
-                else {
-                    currentFingers = 0;
-                }
+                else currentFingers = 0;
             }
         }
 
@@ -184,8 +181,7 @@ void processHandInROI(Mat &frame, Rect roiRect, HandDetector &detector, HandStat
 
     } else {
         if (!state.isFirstFrame) {
-             state.radiusBuffer.clear();
-             state.isFirstFrame = true;
+             state.reset();
         }
         currentFingers = 0;
     }
@@ -221,7 +217,7 @@ struct Button {
         if (isHovered) rectangle(frame, rect, Scalar(0, 200, 0), -1);
 
         int fontFace = FONT_HERSHEY_SIMPLEX;
-        double fontScale = 1.0;
+        double fontScale = 0.8;
         int thickness = 2;
         Size textSize = getTextSize(text, fontFace, fontScale, thickness, 0);
         Point textOrg(rect.x + (rect.width - textSize.width)/2, rect.y + (rect.height + textSize.height)/2);
@@ -234,84 +230,153 @@ struct Button {
 int main() {
     Camera myCam;
     HandDetector detector;
+    MemeDetector memeDetector;
 
     HandState leftHandState;
     HandState rightHandState;
-    AppState appState = STATE_MENU;
+
+    AppState appState = STATE_START_SCREEN;
 
     while (true) {
         Mat frame = myCam.getFrame();
         if (frame.empty()) break;
 
         flip(frame, frame, 1);
+
+        Mat globalMask = detector.detectHand(frame);
+
+        Mat bigMask;
+        resize(globalMask, bigMask, Size(), 3.0, 3.0);
+        imshow("HSV Camera View", bigMask);
+
         int w = frame.cols;
         int h = frame.rows;
 
-        Button startBtn(w/2 - 150, 50, 300, 80, "FINGER MATH");
-        Button exitBtn(20, 20, 100, 40, "EXIT");
+        if (appState == STATE_START_SCREEN) {
+            int btnY = 30;
+            int btnW = 200;
+            int btnH = 60;
+            int gap = 20;
+            int totalW = btnW * 3 + gap * 2;
+            int startX = w/2 - totalW/2;
 
-        if (appState == STATE_MENU) {
-            bool isPressed = checkButtonPress(frame, startBtn.rect, detector);
-            startBtn.draw(frame, isPressed);
-            putText(frame, "Touch to start", Point(w/2 - 100, 160), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(200,200,200), 1);
+            Button mathBtn(startX, btnY, btnW, btnH, "FINGER MATH");
+            Button memeBtn(startX + btnW + gap, btnY, btnW, btnH, "MEME DETECTOR");
+            Button exitBtn(startX + (btnW + gap) * 2, btnY, btnW, btnH, "EXIT");
 
-            if (isPressed) {
-                appState = STATE_ACTIVE;
-                leftHandState = HandState();
-                rightHandState = HandState();
-            }
-        }
-        else if (appState == STATE_ACTIVE) {
+            bool pressMath = checkButtonPress(frame, mathBtn.rect, detector);
+            bool pressMeme = checkButtonPress(frame, memeBtn.rect, detector);
+            bool pressExit = checkButtonPress(frame, exitBtn.rect, detector);
+
+            mathBtn.draw(frame, pressMath);
+            memeBtn.draw(frame, pressMeme);
+            exitBtn.draw(frame, pressExit);
+
             int boxSize = 450;
             if (h < 500) boxSize = h - 50;
             int padding = 20;
-
             Rect rectLeft(padding, h - boxSize - padding, boxSize, boxSize);
             Rect rectRight(w - boxSize - padding, h - boxSize - padding, boxSize, boxSize);
 
-            processHandInROI(frame, rectLeft, detector, leftHandState);
-            processHandInROI(frame, rectRight, detector, rightHandState);
+            Mat maskL = globalMask(rectLeft);
+            Mat maskR = globalMask(rectRight);
+
+            processHandInROI(frame, rectLeft, maskL, detector, leftHandState, false);
+            processHandInROI(frame, rectRight, maskR, detector, rightHandState, false);
+
+            putText(frame, "SELECT MODE", Point(w/2 - 130, h/2), FONT_HERSHEY_SIMPLEX, 1, Scalar(255,255,255), 2);
+
+            if (pressMath) {
+                appState = STATE_MATH;
+                leftHandState.reset();
+                rightHandState.reset();
+                waitKey(300);
+            }
+            if (pressMeme) {
+                appState = STATE_MEME;
+                leftHandState.reset();
+                rightHandState.reset();
+                waitKey(300);
+            }
+            if (pressExit) break;
+        }
+
+        else if (appState == STATE_MATH) {
+            int boxSize = 450;
+            if (h < 500) boxSize = h - 50;
+            int padding = 20;
+            Rect rectLeft(padding, h - boxSize - padding, boxSize, boxSize);
+            Rect rectRight(w - boxSize - padding, h - boxSize - padding, boxSize, boxSize);
+
+            Button backBtn(20, 20, 100, 40, "MENU");
+            bool pressBack = checkButtonPress(frame, backBtn.rect, detector);
+            backBtn.draw(frame, pressBack);
+
+            Mat maskL = globalMask(rectLeft);
+            Mat maskR = globalMask(rectRight);
+
+            processHandInROI(frame, rectLeft, maskL, detector, leftHandState, true);
+            processHandInROI(frame, rectRight, maskR, detector, rightHandState, true);
 
             Scalar colorL = (leftHandState.displayedFingers > 0) ? Scalar(0, 255, 0) : Scalar(0, 0, 255);
-            putText(frame, to_string(leftHandState.displayedFingers),
-                    rectLeft.tl() + Point(20, -20), FONT_HERSHEY_SIMPLEX, 2, colorL, 4);
+            putText(frame, to_string(leftHandState.displayedFingers), rectLeft.tl() + Point(20, -20), FONT_HERSHEY_SIMPLEX, 2, colorL, 4);
 
             Scalar colorR = (rightHandState.displayedFingers > 0) ? Scalar(0, 255, 0) : Scalar(0, 0, 255);
-            putText(frame, to_string(rightHandState.displayedFingers),
-                    rectRight.tl() + Point(20, -20), FONT_HERSHEY_SIMPLEX, 2, colorR, 4);
+            putText(frame, to_string(rightHandState.displayedFingers), rectRight.tl() + Point(20, -20), FONT_HERSHEY_SIMPLEX, 2, colorR, 4);
 
             int totalSum = leftHandState.displayedFingers + rightHandState.displayedFingers;
             string sumText = to_string(totalSum);
-
-            int sumFontFace = FONT_HERSHEY_SIMPLEX;
-            double sumFontScale = 4.0;
-            int sumThickness = 5;
             int baseLine = 0;
-            Size sumSize = getTextSize(sumText, sumFontFace, sumFontScale, sumThickness, &baseLine);
-
-            int boxPadX = 40;
-            int boxPadY = 25;
+            Size sumSize = getTextSize(sumText, FONT_HERSHEY_SIMPLEX, 4.0, 5, &baseLine);
+            int boxPadX = 40; int boxPadY = 25;
             int boxW = sumSize.width + boxPadX * 2;
             int boxH = sumSize.height + boxPadY * 2 + baseLine;
-
             int boxX = w / 2 - boxW / 2;
-            int boxY = 30;
+            int boxY = 80;
 
-            Rect sumRect(boxX, boxY, boxW, boxH);
+            rectangle(frame, Rect(boxX, boxY, boxW, boxH), Scalar(50, 50, 50), -1);
+            rectangle(frame, Rect(boxX, boxY, boxW, boxH), Scalar(0, 215, 255), 4);
+            putText(frame, sumText, Point(boxX + boxPadX, boxY + boxPadY + sumSize.height), FONT_HERSHEY_SIMPLEX, 4.0, Scalar(0, 255, 255), 5);
 
-            rectangle(frame, sumRect, Scalar(50, 50, 50), -1);
-            rectangle(frame, sumRect, Scalar(0, 215, 255), 4);
-            rectangle(frame, sumRect + Size(5,5) - Point(5,5), Scalar(0, 255, 255), 1);
+            if (pressBack) {
+                appState = STATE_START_SCREEN;
+                waitKey(300);
+            }
+        }
 
-            Point sumOrg(boxX + boxPadX, boxY + boxPadY + sumSize.height);
-            putText(frame, sumText, sumOrg, sumFontFace, sumFontScale, Scalar(0, 255, 255), sumThickness);
+        else if (appState == STATE_MEME) {
+            Button backBtn(20, 20, 100, 40, "MENU");
+            bool pressBack = checkButtonPress(frame, backBtn.rect, detector);
+            backBtn.draw(frame, pressBack);
 
-            bool isExitPressed = checkButtonPress(frame, exitBtn.rect, detector);
-            exitBtn.draw(frame, isExitPressed);
+            Rect fullLeft(20, 80, w/2 - 40, h - 100);
+            Rect fullRight(w/2 + 20, 80, w/2 - 40, h - 100);
 
-            if (isExitPressed) {
-                appState = STATE_MENU;
-                waitKey(500);
+            Mat maskL = globalMask(fullLeft);
+            Mat maskR = globalMask(fullRight);
+
+            processHandInROI(frame, fullLeft, maskL, detector, leftHandState, true);
+            processHandInROI(frame, fullRight, maskR, detector, rightHandState, true);
+
+            MemeType memeL = memeDetector.detect(leftHandState.positionHistory, leftHandState.displayedFingers);
+            MemeType memeR = memeDetector.detect(rightHandState.positionHistory, rightHandState.displayedFingers);
+
+            putText(frame, "DO THE WEIGHING!", Point(w/2 - 130, 100), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200,200,200), 2);
+
+            if (memeL == MEME_67 && memeR == MEME_67) {
+                string memeText = "67";
+                int face = FONT_HERSHEY_SIMPLEX;
+                double scale = 15.0;
+                int thick = 25;
+                Size sz = getTextSize(memeText, face, scale, thick, 0);
+                Point org(w/2 - sz.width/2, h/2 + sz.height/2);
+
+                putText(frame, memeText, org, face, scale, Scalar(0, 255, 255), thick);
+            }
+
+            if (pressBack) {
+                appState = STATE_START_SCREEN;
+                waitKey(300);
             }
         }
 
