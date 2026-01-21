@@ -5,6 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include <map>
+#include <cstdlib>
 #include "Camera.h"
 #include "HandDetector.h"
 #include "MemeDetector.h"
@@ -232,10 +233,13 @@ int main() {
     HandDetector detector;
     MemeDetector memeDetector;
 
+    VideoCapture cap67("67.mov");
+
     HandState leftHandState;
     HandState rightHandState;
 
     AppState appState = STATE_START_SCREEN;
+    bool isMemePlaying = false;
 
     while (true) {
         Mat frame = myCam.getFrame();
@@ -296,6 +300,7 @@ int main() {
                 appState = STATE_MEME;
                 leftHandState.reset();
                 rightHandState.reset();
+                isMemePlaying = false;
                 waitKey(300);
             }
             if (pressExit) break;
@@ -345,38 +350,57 @@ int main() {
         }
 
         else if (appState == STATE_MEME) {
-            Button backBtn(20, 20, 100, 40, "MENU");
-            bool pressBack = checkButtonPress(frame, backBtn.rect, detector);
-            backBtn.draw(frame, pressBack);
 
-            Rect fullLeft(20, 80, w/2 - 40, h - 100);
-            Rect fullRight(w/2 + 20, 80, w/2 - 40, h - 100);
+            if (isMemePlaying) {
+                Mat vFrame;
+                cap67 >> vFrame;
 
-            Mat maskL = globalMask(fullLeft);
-            Mat maskR = globalMask(fullRight);
+                if (vFrame.empty()) {
+                    isMemePlaying = false;
+                    destroyWindow("Meme Player");
+                } else {
+                    Mat smallV;
+                    resize(vFrame, smallV, Size(w/2, h/2));
 
-            processHandInROI(frame, fullLeft, maskL, detector, leftHandState, true);
-            processHandInROI(frame, fullRight, maskR, detector, rightHandState, true);
+                    Mat canvas(h, w, vFrame.type());
+                    smallV.copyTo(canvas(Rect(0, 0, w/2, h/2)));
+                    smallV.copyTo(canvas(Rect(w/2, 0, w/2, h/2)));
+                    smallV.copyTo(canvas(Rect(0, h/2, w/2, h/2)));
+                    smallV.copyTo(canvas(Rect(w/2, h/2, w/2, h/2)));
 
-            MemeType memeL = memeDetector.detect(leftHandState.positionHistory, leftHandState.displayedFingers);
-            MemeType memeR = memeDetector.detect(rightHandState.positionHistory, rightHandState.displayedFingers);
-
-            putText(frame, "DO THE WEIGHING!", Point(w/2 - 130, 100), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200,200,200), 2);
-
-            if (memeL == MEME_67 && memeR == MEME_67) {
-                string memeText = "67";
-                int face = FONT_HERSHEY_SIMPLEX;
-                double scale = 15.0;
-                int thick = 25;
-                Size sz = getTextSize(memeText, face, scale, thick, 0);
-                Point org(w/2 - sz.width/2, h/2 + sz.height/2);
-
-                putText(frame, memeText, org, face, scale, Scalar(0, 255, 255), thick);
+                    imshow("Meme Player", canvas);
+                }
             }
 
-            if (pressBack) {
-                appState = STATE_START_SCREEN;
-                waitKey(300);
+            if (!isMemePlaying) {
+                Button backBtn(20, 20, 100, 40, "MENU");
+                bool pressBack = checkButtonPress(frame, backBtn.rect, detector);
+                backBtn.draw(frame, pressBack);
+
+                Rect fullLeft(20, 80, w/2 - 40, h - 100);
+                Rect fullRight(w/2 + 20, 80, w/2 - 40, h - 100);
+
+                Mat maskL = globalMask(fullLeft);
+                Mat maskR = globalMask(fullRight);
+
+                processHandInROI(frame, fullLeft, maskL, detector, leftHandState, true);
+                processHandInROI(frame, fullRight, maskR, detector, rightHandState, true);
+
+                MemeType memeL = memeDetector.detect(leftHandState.positionHistory, leftHandState.displayedFingers);
+                MemeType memeR = memeDetector.detect(rightHandState.positionHistory, rightHandState.displayedFingers);
+
+                putText(frame, "DO THE WEIGHING!", Point(w/2 - 130, 100), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200,200,200), 2);
+
+                if (memeL == MEME_67 && memeR == MEME_67) {
+                    isMemePlaying = true;
+                    cap67.set(CAP_PROP_POS_FRAMES, 0);
+                    system("afplay 67.mov &");
+                }
+
+                if (pressBack) {
+                    appState = STATE_START_SCREEN;
+                    waitKey(300);
+                }
             }
         }
 
