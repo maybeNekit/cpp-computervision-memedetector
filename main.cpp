@@ -2,6 +2,8 @@
 #include <cmath>
 #include <numeric>
 #include <deque>
+#include <vector>
+#include <algorithm>
 #include <map>
 #include "Camera.h"
 #include "HandDetector.h"
@@ -15,10 +17,14 @@ enum AppState {
 };
 
 struct HandState {
-    deque<int> history;
-    double smoothRadius = 0;
+    deque<int> fingerHistory;
+    deque<double> radiusBuffer;
+    static const int bufferLimit = 100;
+
     Point smoothCenter = Point(0, 0);
+    double smoothRadius = 0;
     bool isFirstFrame = true;
+
     int displayedFingers = 0;
 };
 
@@ -30,16 +36,16 @@ double getAngle(Point s, Point f, Point e) {
     return angle * 180.0 / 3.14159265;
 }
 
-// --- ПРОВЕРКА НАЖАТИЯ (МГНОВЕННАЯ) ---
+double getDist(Point p1, Point p2) {
+    return sqrt(pow(p1.x - p2.x, 2) + pow(p1.y - p2.y, 2));
+}
+
 bool checkButtonPress(Mat &frame, Rect btnRect, HandDetector &detector) {
     btnRect = btnRect & Rect(0, 0, frame.cols, frame.rows);
     if (btnRect.area() == 0) return false;
-
     Mat roi = frame(btnRect);
     Mat mask = detector.detectHand(roi);
     int skinPixels = countNonZero(mask);
-
-    // Порог: 60 пикселей (чуть-чуть кожи достаточно)
     return (skinPixels > 60);
 }
 
@@ -62,100 +68,134 @@ void processHandInROI(Mat &frame, Rect roiRect, HandDetector &detector, HandStat
         Point localCenter = detector.getPalmCenter(mask, rawRadius);
         Point globalCenter = localCenter + roiRect.tl();
 
+        state.radiusBuffer.push_back(rawRadius);
+        if (state.radiusBuffer.size() > state.bufferLimit) state.radiusBuffer.pop_front();
+
+        double refRadius = rawRadius;
+        if (!state.radiusBuffer.empty()) {
+            refRadius = *max_element(state.radiusBuffer.begin(), state.radiusBuffer.end());
+        }
+
         if (state.isFirstFrame) {
-            state.smoothRadius = rawRadius;
+            state.smoothRadius = refRadius;
             state.smoothCenter = globalCenter;
             state.isFirstFrame = false;
         } else {
-            state.smoothRadius = state.smoothRadius * 0.6 + rawRadius * 0.4;
-            state.smoothCenter.x = (int)(state.smoothCenter.x * 0.6 + globalCenter.x * 0.4);
-            state.smoothCenter.y = (int)(state.smoothCenter.y * 0.6 + globalCenter.y * 0.4);
+            double speed = (rawRadius < refRadius * 0.85) ? 0.1 : 0.4;
+
+            state.smoothRadius = state.smoothRadius * 0.6 + refRadius * 0.4;
+            state.smoothCenter.x = (int)(state.smoothCenter.x * (1 - speed) + globalCenter.x * speed);
+            state.smoothCenter.y = (int)(state.smoothCenter.y * (1 - speed) + globalCenter.y * speed);
         }
 
-        circle(frame, state.smoothCenter, (int)state.smoothRadius, Scalar(0, 255, 255), 2);
-        circle(frame, state.smoothCenter, 5, Scalar(0, 0, 255), -1);
+        circle(frame, state.smoothCenter, (int)rawRadius, Scalar(0, 255, 255), 1);
+
+        double protectionRadius = state.smoothRadius * 1.75;
+        circle(frame, state.smoothCenter, (int)protectionRadius, Scalar(255, 0, 0), 2);
 
         vector<int> hullIndices;
         convexHull(handContour, hullIndices, false);
         vector<Point> hullPoints;
         for(int idx : hullIndices) hullPoints.push_back(handContour[idx]);
 
-        vector<Vec4i> defects;
-        if (hullIndices.size() > 3) {
-            try { convexityDefects(handContour, hullIndices, defects); } catch (...) {}
+        double areaContour = contourArea(handContour);
+        double areaHull = contourArea(hullPoints);
+        double solidity = areaContour / areaHull;
+
+        if (solidity > 0.94) {
+            currentFingers = 0;
         }
-
-        int validDefects = 0;
-        for (int i = 0; i < defects.size(); i++) {
-            Point p_start = handContour[defects[i][0]];
-            Point p_end = handContour[defects[i][1]];
-            Point p_far = handContour[defects[i][2]];
-            double depth = defects[i][3] / 256.0;
-
-            if (depth < state.smoothRadius * 0.4) continue;
-            if (p_far.y > state.smoothCenter.y + state.smoothRadius) continue;
-
-            if (getAngle(p_start, p_far, p_end) < 95) {
-                validDefects++;
-                circle(frame, p_far, 6, Scalar(255, 0, 0), -1);
-            }
-        }
-
-        if (validDefects == 0) {
-            double areaContour = contourArea(handContour);
-            double areaHull = contourArea(hullPoints);
-            double solidity = areaContour / areaHull;
-
-            Point topPoint = state.smoothCenter;
-            double maxDist = 0;
-            int topIdx = -1;
-
+        else {
+            vector<Point> candidates;
             for (int idx : hullIndices) {
                 Point pt = handContour[idx];
-                if (pt.y > state.smoothCenter.y) continue;
-                double d = norm(pt - state.smoothCenter);
-                if (d > maxDist) { maxDist = d; topPoint = pt; topIdx = idx; }
-            }
+                if (pt.y > state.smoothCenter.y + state.smoothRadius) continue;
 
-            double tipAngle = 180;
-            if (topIdx != -1) {
-                int sz = handContour.size();
-                int offset = 12;
-                if (sz > 30) {
-                    Point p_prev = handContour[(topIdx - offset + sz) % sz];
-                    Point p_next = handContour[(topIdx + offset) % sz];
-                    tipAngle = getAngle(p_prev, topPoint, p_next);
+                if (getDist(pt, state.smoothCenter) > protectionRadius) {
+                    candidates.push_back(pt);
                 }
             }
 
-            bool isLongEnough = maxDist > state.smoothRadius * 1.6;
-            bool isSharp = tipAngle < 65;
-            bool isNotSolid = solidity < 0.92;
+            sort(candidates.begin(), candidates.end(), [&](Point a, Point b) {
+                return getDist(a, state.smoothCenter) > getDist(b, state.smoothCenter);
+            });
 
-            if (isLongEnough && (isSharp || isNotSolid)) {
-                currentFingers = 1;
-                line(frame, state.smoothCenter, topPoint, Scalar(0, 255, 0), 3);
-            } else {
-                currentFingers = 0;
+            vector<Point> peaks;
+            for (Point p : candidates) {
+                bool isDuplicate = false;
+                for (Point existing : peaks) {
+                    if (getDist(p, existing) < state.smoothRadius * 0.8) {
+                        isDuplicate = true;
+                        break;
+                    }
+                    if (getAngle(p, state.smoothCenter, existing) < 25) {
+                        isDuplicate = true;
+                        break;
+                    }
+                }
+                if (!isDuplicate) {
+                    peaks.push_back(p);
+                }
             }
-        } else {
-            currentFingers = validDefects + 1;
+
+            vector<Vec4i> defects;
+            if (hullIndices.size() > 3) {
+                try { convexityDefects(handContour, hullIndices, defects); } catch (...) {}
+            }
+            int validDefects = 0;
+            for (int i = 0; i < defects.size(); i++) {
+                Point p_start = handContour[defects[i][0]];
+                Point p_end = handContour[defects[i][1]];
+                Point p_far = handContour[defects[i][2]];
+                double depth = defects[i][3] / 256.0;
+
+                if (depth < state.smoothRadius * 0.4) continue;
+                if (p_far.y > state.smoothCenter.y + state.smoothRadius) continue;
+
+                if (getAngle(p_start, p_far, p_end) < 95) validDefects++;
+            }
+
+            if (validDefects >= 1) {
+                currentFingers = validDefects + 1;
+            }
+            else {
+                int pCount = peaks.size();
+                if (pCount >= 2) {
+                    currentFingers = pCount;
+                    for(auto p : peaks) line(frame, state.smoothCenter, p, Scalar(0, 255, 0), 2);
+                }
+                else if (pCount == 1) {
+                    if (solidity < 0.92) {
+                        currentFingers = 1;
+                        line(frame, state.smoothCenter, peaks[0], Scalar(0, 255, 0), 2);
+                    } else {
+                        currentFingers = 0;
+                    }
+                }
+                else {
+                    currentFingers = 0;
+                }
+            }
         }
+
         if (currentFingers > 5) currentFingers = 5;
 
         vector<vector<Point>> dc = {handContour};
         drawContours(frame, dc, 0, Scalar(100, 100, 100), 1);
 
     } else {
-        state.isFirstFrame = true;
+        if (!state.isFirstFrame) {
+             state.radiusBuffer.clear();
+             state.isFirstFrame = true;
+        }
         currentFingers = 0;
     }
 
-    state.history.push_back(currentFingers);
-    if (state.history.size() > 10) state.history.pop_front();
+    state.fingerHistory.push_back(currentFingers);
+    if (state.fingerHistory.size() > 10) state.fingerHistory.pop_front();
 
     map<int, int> votes;
-    for (int val : state.history) votes[val]++;
+    for (int val : state.fingerHistory) votes[val]++;
     int maxVotes = 0;
     for (auto const& item : votes) {
         if (item.second > maxVotes) {
@@ -165,7 +205,6 @@ void processHandInROI(Mat &frame, Rect roiRect, HandDetector &detector, HandStat
     }
 }
 
-// --- КЛАСС КНОПКИ (Упрощенный) ---
 struct Button {
     Rect rect;
     string text;
@@ -177,16 +216,10 @@ struct Button {
         color = Scalar(0, 200, 0);
     }
 
-    // Просто рисуем. Если нажата (isHovered), меняем цвет.
     void draw(Mat &frame, bool isHovered) {
         Scalar curColor = isHovered ? Scalar(0, 255, 255) : color;
-
         rectangle(frame, rect, curColor, 2);
-
-        // Если нажата - заливаем полностью сразу
-        if (isHovered) {
-            rectangle(frame, rect, Scalar(0, 200, 0), -1);
-        }
+        if (isHovered) rectangle(frame, rect, Scalar(0, 200, 0), -1);
 
         int fontFace = FONT_HERSHEY_SIMPLEX;
         double fontScale = 1.0;
@@ -219,14 +252,10 @@ int main() {
         Button exitBtn(20, 20, 100, 40, "EXIT");
 
         if (appState == STATE_MENU) {
-            // === МЕНЮ ===
             bool isPressed = checkButtonPress(frame, startBtn.rect, detector);
-
-            // Рисуем кнопку (она подсветится, если нажата)
             startBtn.draw(frame, isPressed);
             putText(frame, "Touch to start", Point(w/2 - 100, 160), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(200,200,200), 1);
 
-            // МГНОВЕННЫЙ ПЕРЕХОД
             if (isPressed) {
                 appState = STATE_ACTIVE;
                 leftHandState = HandState();
@@ -234,7 +263,6 @@ int main() {
             }
         }
         else if (appState == STATE_ACTIVE) {
-            // === ИГРА ===
             int boxSize = 450;
             if (h < 500) boxSize = h - 50;
             int padding = 20;
@@ -253,14 +281,11 @@ int main() {
             putText(frame, "R: " + to_string(rightHandState.displayedFingers),
                     rectRight.tl() + Point(0, -10), FONT_HERSHEY_SIMPLEX, 2, colorR, 4);
 
-            // Кнопка Выход
             bool isExitPressed = checkButtonPress(frame, exitBtn.rect, detector);
             exitBtn.draw(frame, isExitPressed);
 
-            // МГНОВЕННЫЙ ВЫХОД
             if (isExitPressed) {
                 appState = STATE_MENU;
-                // Небольшая задержка, чтобы сразу не нажать Старт снова, если рука там осталась
                 waitKey(500);
             }
         }

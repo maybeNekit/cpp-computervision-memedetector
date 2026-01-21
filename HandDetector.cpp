@@ -2,16 +2,9 @@
 #include <iostream>
 
 HandDetector::HandDetector() {
-
     std::string path = "haarcascade_frontalface_default.xml";
-    // ЗАГРУЗКА КАСКАДА
-    // ВАЖНО: Если программа падает, укажи здесь ПОЛНЫЙ ПУТЬ к файлу xml
-    // Например: "/Users/твое_имя/Projects/cv/haarcascade_frontalface_default.xml"
     if (!faceDetector.load(path)) {
-        // Попробуем загрузить из стандартной папки (для Mac/Linux иногда срабатывает)
-        if (!faceDetector.load(path)) {
-             std::cerr << "CRITICAL ERROR: XML файл не найден! Лицо не будет удалено." << std::endl;
-        }
+         std::cerr << "WARNING: XML файл лица не найден!" << std::endl;
     }
 }
 
@@ -21,41 +14,30 @@ cv::Mat HandDetector::detectHand(cv::Mat inputFrame) {
     cv::Mat hsvImage, mask;
     cv::cvtColor(inputFrame, hsvImage, cv::COLOR_BGR2HSV);
 
-    // 1. ЦВЕТ (Твои рабочие настройки)
-    cv::Scalar lower(0, 70, 80);
-    cv::Scalar upper(20, 130, 255);
+    // 1. ЦВЕТ
+    cv::Scalar lower(0, 60, 60);
+    cv::Scalar upper(20, 150, 255);
     cv::inRange(hsvImage, lower, upper, mask);
 
-    // 2. ЧИСТКА ШУМА
+    // 2. ЧИСТКА
     cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
     cv::morphologyEx(mask, mask, cv::MORPH_OPEN, kernel);
     cv::dilate(mask, mask, kernel, cv::Point(-1,-1), 2);
     cv::GaussianBlur(mask, mask, cv::Size(5, 5), 0);
 
-    // 3. УДАЛЕНИЕ ЛИЦА (Самое важное!)
-    // Мы ищем лицо на оригинальном кадре и стираем его с маски.
-
+    // 3. УДАЛЕНИЕ ЛИЦА
     std::vector<cv::Rect> faces;
     cv::Mat gray;
     cv::cvtColor(inputFrame, gray, cv::COLOR_BGR2GRAY);
-
-    // Ищем лица (scaleFactor=1.1, minNeighbors=4)
     faceDetector.detectMultiScale(gray, faces, 1.1, 4, 0, cv::Size(60, 60));
 
     for (size_t i = 0; i < faces.size(); i++) {
-        // Расширяем зону удаления (чтобы стереть шею и прическу)
-        cv::Rect faceRect = faces[i];
-
-        // Чуть увеличиваем квадрат удаления
-        int padding = 40;
-        faceRect.x = std::max(0, faceRect.x - padding);
-        faceRect.y = std::max(0, faceRect.y - padding);
-        faceRect.width += padding * 2;
-        faceRect.height += padding * 3; // Вниз берем больше (шея)
-
-        // РИСУЕМ ЧЕРНЫЙ КВАДРАТ НА МАСКЕ
-        // Это полностью стирает лицо из расчетов
-        cv::rectangle(mask, faceRect, cv::Scalar(0), -1);
+        cv::Rect r = faces[i];
+        r.x = std::max(0, r.x - 40);
+        r.y = std::max(0, r.y - 40);
+        r.width += 80;
+        r.height += 200;
+        cv::rectangle(mask, r, cv::Scalar(0), -1);
     }
 
     return mask;
@@ -68,36 +50,52 @@ std::vector<cv::Point> HandDetector::findHandContour(cv::Mat mask) {
     std::vector<cv::Point> bestContour;
     double maxArea = 0;
 
-    for (int i = 0; i < contours.size(); i++) {
+    for (size_t i = 0; i < contours.size(); i++) {
         double area = cv::contourArea(contours[i]);
-
-        // Теперь нам не нужны сложные проверки на Solidity!
-        // Лица на маске нет. Самый большой объект - это рука.
-        // Просто фильтруем мелкий шум.
         if (area > maxArea && area > 2000) {
             maxArea = area;
             bestContour = contours[i];
         }
     }
-
     return bestContour;
 }
 
+// === НОВАЯ ЛОГИКА: SQUARE CROP (Обрезаем запястье по ширине) ===
 cv::Point HandDetector::getPalmCenter(cv::Mat mask, double &radius) {
     if (mask.empty()) return cv::Point(0, 0);
 
+    // 1. Находим границы всей руки
+    cv::Rect boundRect = cv::boundingRect(mask);
+    if (boundRect.area() == 0) return cv::Point(0, 0);
+
     cv::Mat dist;
-    // Вычисляем расстояние от каждого пикселя до ближайшего черного пикселя
     cv::distanceTransform(mask, dist, cv::DIST_L2, 5);
 
-    int maxIdx[2];    // Координаты
-    double maxVal;    // Максимальное значение (это и есть радиус)
+    // 2. ОПРЕДЕЛЯЕМ ЗОНУ ПОИСКА (ROI)
+    // Ладонь/Кулак обычно вписываются в квадрат.
+    // Если рука длинная (предплечье в кадре), высота >> ширины.
+    // Мы ограничиваем высоту поиска = 1.2 * ширины.
+    // Всё что ниже - это запястье, туда не смотрим.
 
-    // Находим точку с максимальным значением (центр ладони)
-    cv::minMaxIdx(dist, 0, &maxVal, 0, maxIdx);
+    int limitHeight = std::min(boundRect.height, (int)(boundRect.width * 1.2));
 
-    radius = maxVal; // Записываем радиус
+    cv::Rect searchZone = boundRect;
+    searchZone.height = limitHeight; // Обрезаем низ жестко
 
-    // Возвращаем координаты (x, y)
-    return cv::Point(maxIdx[1], maxIdx[0]);
+    // Защита от вылета за экран
+    searchZone = searchZone & cv::Rect(0, 0, mask.cols, mask.rows);
+
+    // 3. Ищем максимум ТОЛЬКО в верхнем квадрате
+    double maxVal;
+    cv::Point maxLoc;
+    cv::Mat distROI = dist(searchZone);
+
+    cv::minMaxLoc(distROI, 0, &maxVal, 0, &maxLoc);
+
+    // Корректируем координаты
+    maxLoc.x += searchZone.x;
+    maxLoc.y += searchZone.y;
+
+    radius = maxVal;
+    return maxLoc;
 }
