@@ -82,7 +82,6 @@ void processHandInROI(Mat &frame, Rect roiRect, HandDetector &detector, HandStat
             state.isFirstFrame = false;
         } else {
             double speed = (rawRadius < refRadius * 0.85) ? 0.1 : 0.4;
-
             state.smoothRadius = state.smoothRadius * 0.6 + refRadius * 0.4;
             state.smoothCenter.x = (int)(state.smoothCenter.x * (1 - speed) + globalCenter.x * speed);
             state.smoothCenter.y = (int)(state.smoothCenter.y * (1 - speed) + globalCenter.y * speed);
@@ -273,13 +272,27 @@ int main() {
             processHandInROI(frame, rectLeft, detector, leftHandState);
             processHandInROI(frame, rectRight, detector, rightHandState);
 
+
             Scalar colorL = (leftHandState.displayedFingers > 0) ? Scalar(0, 255, 0) : Scalar(0, 0, 255);
-            putText(frame, "L: " + to_string(leftHandState.displayedFingers),
-                    rectLeft.tl() + Point(0, -10), FONT_HERSHEY_SIMPLEX, 2, colorL, 4);
+            putText(frame, to_string(leftHandState.displayedFingers),
+                    rectLeft.tl() + Point(20, -20), FONT_HERSHEY_SIMPLEX, 2, colorL, 4);
 
             Scalar colorR = (rightHandState.displayedFingers > 0) ? Scalar(0, 255, 0) : Scalar(0, 0, 255);
-            putText(frame, "R: " + to_string(rightHandState.displayedFingers),
-                    rectRight.tl() + Point(0, -10), FONT_HERSHEY_SIMPLEX, 2, colorR, 4);
+            putText(frame, to_string(rightHandState.displayedFingers),
+                    rectRight.tl() + Point(20, -20), FONT_HERSHEY_SIMPLEX, 2, colorR, 4);
+
+
+            int totalSum = leftHandState.displayedFingers + rightHandState.displayedFingers;
+            string sumText = to_string(totalSum);
+
+            int sumFontFace = FONT_HERSHEY_SIMPLEX;
+            double sumFontScale = 5.0;
+            int sumThickness = 6;
+            Size sumSize = getTextSize(sumText, sumFontFace, sumFontScale, sumThickness, 0);
+
+            Point sumOrg(w/2 - sumSize.width/2, h - boxSize/2);
+
+            putText(frame, sumText, sumOrg, sumFontFace, sumFontScale, Scalar(0, 255, 255), sumThickness);
 
             bool isExitPressed = checkButtonPress(frame, exitBtn.rect, detector);
             exitBtn.draw(frame, isExitPressed);
