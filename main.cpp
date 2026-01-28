@@ -453,6 +453,7 @@ int main() {
                 memeTriggerCount = 0;
             }
 
+
             if (pressBack) {
                 appState = STATE_START_SCREEN;
                 cv::waitKey(300);

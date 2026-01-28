@@ -15,6 +15,7 @@ MemeType MemeDetector::detect(const std::deque<cv::Point>& history, int fingers)
         y_vals.push_back(p.y);
     }
 
+
     auto minmax_x = std::minmax_element(x_vals.begin(), x_vals.end());
     auto minmax_y = std::minmax_element(y_vals.begin(), y_vals.end());
 
