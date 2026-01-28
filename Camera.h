@@ -1,19 +1,17 @@
 #pragma once
-#include <opencv2/opencv.hpp> // Подключаем библиотеку OpenCV
+#include <opencv2/opencv.hpp>
 
 class Camera {
 private:
-    // Это "движок" камеры от самих разработчиков OpenCV.
-    // Мы прячем его в private, чтобы никто снаружи случайно его не сломал.
+
     cv::VideoCapture cap;
 
 public:
-    // Конструктор: запускается один раз при создании камеры
+
     Camera();
 
-    // Деструктор: запускается один раз при удалении камеры
+
     ~Camera();
 
-    // Метод: просьба "дай мне текущую картинку"
     cv::Mat getFrame(); 
 };

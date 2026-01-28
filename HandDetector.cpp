@@ -60,39 +60,35 @@ std::vector<cv::Point> HandDetector::findHandContour(cv::Mat mask) {
     return bestContour;
 }
 
-// === НОВАЯ ЛОГИКА: SQUARE CROP (Обрезаем запястье по ширине) ===
+
 cv::Point HandDetector::getPalmCenter(cv::Mat mask, double &radius) {
     if (mask.empty()) return cv::Point(0, 0);
 
-    // 1. Находим границы всей руки
+
     cv::Rect boundRect = cv::boundingRect(mask);
     if (boundRect.area() == 0) return cv::Point(0, 0);
 
     cv::Mat dist;
     cv::distanceTransform(mask, dist, cv::DIST_L2, 5);
 
-    // 2. ОПРЕДЕЛЯЕМ ЗОНУ ПОИСКА (ROI)
-    // Ладонь/Кулак обычно вписываются в квадрат.
-    // Если рука длинная (предплечье в кадре), высота >> ширины.
-    // Мы ограничиваем высоту поиска = 1.2 * ширины.
-    // Всё что ниже - это запястье, туда не смотрим.
+
 
     int limitHeight = std::min(boundRect.height, (int)(boundRect.width * 1.2));
 
     cv::Rect searchZone = boundRect;
-    searchZone.height = limitHeight; // Обрезаем низ жестко
+    searchZone.height = limitHeight;
 
-    // Защита от вылета за экран
+
     searchZone = searchZone & cv::Rect(0, 0, mask.cols, mask.rows);
 
-    // 3. Ищем максимум ТОЛЬКО в верхнем квадрате
+
     double maxVal;
     cv::Point maxLoc;
     cv::Mat distROI = dist(searchZone);
 
     cv::minMaxLoc(distROI, 0, &maxVal, 0, &maxLoc);
 
-    // Корректируем координаты
+
     maxLoc.x += searchZone.x;
     maxLoc.y += searchZone.y;
 
