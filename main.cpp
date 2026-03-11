@@ -392,6 +392,67 @@ public:
         return NextState::KEEP_CURRENT;
     }
 
+
+
+private:
+    void playVideo(VideoCapture* cap, const string& audioFile, int w, int h) {
+        isMemePlaying = true;
+        activeVideoCap = cap;
+        activeVideoCap->set(CAP_PROP_POS_FRAMES, 0);
+        namedWindow("Meme Player", WINDOW_NORMAL);
+        resizeWindow("Meme Player", w, h);
+        moveWindow("Meme Player", rand() % 200, rand() % 200);
+        string cmd = "afplay " + audioFile + " &";
+        system(cmd.c_str());
+    }
+
+    void stopVideo() {
+        isMemePlaying = false;
+        if (getWindowProperty("Meme Player", WND_PROP_VISIBLE) >= 0) destroyWindow("Meme Player");
+        system("killall afplay 2>/dev/null");
+        activeVideoCap = nullptr;
+    }
+};
+
+int main() {
+    srand(time(0));
+    Camera myCam;
+    HandDetector detector;
+    
+    VideoCapture cap67("67.mov");
+    VideoCapture capGrizman("grizman.mp4");
+
+    unique_ptr<AppMode> currentMode = make_unique<MenuMode>();
+
+    namedWindow("Finger Math App", WINDOW_NORMAL);
+    
+    while (true) {
+        Mat frame = myCam.getFrame();
+        if (frame.empty()) break;
+        flip(frame, frame, 1);
+        
+        Mat globalMask = detector.detectHand(frame);
+
+        NextState next = currentMode->update(frame, globalMask, detector);
+
+        if (next == NextState::GO_MATH) {
+            currentMode = make_unique<MathMode>();
+        } else if (next == NextState::GO_MEME) {
+            currentMode = make_unique<MemeMode>(cap67, capGrizman);
+        } else if (next == NextState::GO_MENU) {
+            currentMode = make_unique<MenuMode>();
+        } else if (next == NextState::EXIT) {
+            break;
+        }
+
+        imshow("Finger Math App", frame);
+        if (waitKey(1) == 27) break;
+    }
+    
+    system("killall afplay 2>/dev/null");
+    return 0;
+}
+
     
 
 
