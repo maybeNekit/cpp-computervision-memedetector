@@ -11,6 +11,9 @@
 #include "HandDetector.h"
 #include "MemeDetector.h"
 
+using namespace cv;
+using namespace std;
+
 enum AppState {
     STATE_START_SCREEN,
     STATE_MATH,
@@ -18,12 +21,12 @@ enum AppState {
 };
 
 struct HandState {
-    std::deque<int> fingerHistory;
-    std::deque<double> radiusBuffer;
-    std::deque<cv::Point> positionHistory;
+    deque<int> fingerHistory;
+    deque<double> radiusBuffer;
+    deque<Point> positionHistory;
     static const int bufferLimit = 100;
 
-    cv::Point smoothCenter = cv::Point(0, 0);
+    Point smoothCenter = Point(0, 0);
     double smoothRadius = 0;
     bool isFirstFrame = true;
 
@@ -33,60 +36,60 @@ struct HandState {
         fingerHistory.clear();
         radiusBuffer.clear();
         positionHistory.clear();
-        smoothCenter = cv::Point(0, 0);
+        smoothCenter = Point(0, 0);
         smoothRadius = 0;
         isFirstFrame = true;
         displayedFingers = 0;
     }
 };
 
-double getAngle(cv::Point s, cv::Point f, cv::Point e) {
-    double l1 = cv::norm(f - s);
-    double l2 = cv::norm(f - e);
+double getAngle(Point s, Point f, Point e) {
+    double l1 = norm(f - s);
+    double l2 = norm(f - e);
     double dot = (s.x - f.x) * (e.x - f.x) + (s.y - f.y) * (e.y - f.y);
-    double angle = std::acos(dot / (l1 * l2));
+    double angle = acos(dot / (l1 * l2));
     return angle * 180.0 / 3.14159265;
 }
 
-double getDist(cv::Point p1, cv::Point p2) {
-    return std::sqrt(std::pow(p1.x - p2.x, 2) + std::pow(p1.y - p2.y, 2));
+double getDist(Point p1, Point p2) {
+    return sqrt(pow(p1.x - p2.x, 2) + pow(p1.y - p2.y, 2));
 }
 
-bool checkButtonPress(cv::Mat &frame, cv::Rect btnRect, HandDetector &detector) {
-    btnRect = btnRect & cv::Rect(0, 0, frame.cols, frame.rows);
+bool checkButtonPress(Mat &frame, Rect btnRect, HandDetector &detector) {
+    btnRect = btnRect & Rect(0, 0, frame.cols, frame.rows);
     if (btnRect.area() == 0) return false;
-    cv::Mat roi = frame(btnRect);
-    cv::Mat mask = detector.detectHand(roi);
-    int skinPixels = cv::countNonZero(mask);
+    Mat roi = frame(btnRect);
+    Mat mask = detector.detectHand(roi);
+    int skinPixels = countNonZero(mask);
     return (skinPixels > 60);
 }
 
-void processHandInROI(cv::Mat &frame, cv::Rect roiRect, cv::Mat &maskROI, HandDetector &detector, HandState &state, bool drawBox) {
-    roiRect = roiRect & cv::Rect(0, 0, frame.cols, frame.rows);
+void processHandInROI(Mat &frame, Rect roiRect, Mat &maskROI, HandDetector &detector, HandState &state, bool drawBox) {
+    roiRect = roiRect & Rect(0, 0, frame.cols, frame.rows);
     if (roiRect.area() == 0) return;
     if (maskROI.empty()) return;
 
-    std::vector<cv::Point> rawContour = detector.findHandContour(maskROI);
+    vector<Point> rawContour = detector.findHandContour(maskROI);
     int currentFingers = 0;
 
     if (drawBox) {
-        cv::rectangle(frame, roiRect, cv::Scalar(200, 200, 200), 2);
+        rectangle(frame, roiRect, Scalar(200, 200, 200), 2);
     }
 
     if (!rawContour.empty()) {
-        std::vector<cv::Point> handContour;
+        vector<Point> handContour;
         for(auto pt : rawContour) handContour.push_back(pt + roiRect.tl());
 
         double rawRadius = 0;
-        cv::Point localCenter = detector.getPalmCenter(maskROI, rawRadius);
-        cv::Point globalCenter = localCenter + roiRect.tl();
+        Point localCenter = detector.getPalmCenter(maskROI, rawRadius);
+        Point globalCenter = localCenter + roiRect.tl();
 
         state.radiusBuffer.push_back(rawRadius);
         if (state.radiusBuffer.size() > state.bufferLimit) state.radiusBuffer.pop_front();
 
         double refRadius = rawRadius;
         if (!state.radiusBuffer.empty()) {
-            refRadius = *std::max_element(state.radiusBuffer.begin(), state.radiusBuffer.end());
+            refRadius = *max_element(state.radiusBuffer.begin(), state.radiusBuffer.end());
         }
 
         if (state.isFirstFrame) {
@@ -103,53 +106,53 @@ void processHandInROI(cv::Mat &frame, cv::Rect roiRect, cv::Mat &maskROI, HandDe
         state.positionHistory.push_back(state.smoothCenter);
         if (state.positionHistory.size() > 20) state.positionHistory.pop_front();
 
-        cv::circle(frame, state.smoothCenter, (int)rawRadius, cv::Scalar(0, 255, 255), 1);
+        circle(frame, state.smoothCenter, (int)rawRadius, Scalar(0, 255, 255), 1);
         double protectionRadius = state.smoothRadius * 1.75;
-        cv::circle(frame, state.smoothCenter, (int)protectionRadius, cv::Scalar(255, 0, 0), 2);
+        circle(frame, state.smoothCenter, (int)protectionRadius, Scalar(255, 0, 0), 2);
 
-        std::vector<int> hullIndices;
-        cv::convexHull(handContour, hullIndices, false);
-        std::vector<cv::Point> hullPoints;
+        vector<int> hullIndices;
+        convexHull(handContour, hullIndices, false);
+        vector<Point> hullPoints;
         for(int idx : hullIndices) hullPoints.push_back(handContour[idx]);
 
-        double areaContour = cv::contourArea(handContour);
-        double areaHull = cv::contourArea(hullPoints);
+        double areaContour = contourArea(handContour);
+        double areaHull = contourArea(hullPoints);
         double solidity = areaContour / areaHull;
 
         if (solidity > 0.94) {
             currentFingers = 0;
         }
         else {
-            std::vector<cv::Point> candidates;
+            vector<Point> candidates;
             for (int idx : hullIndices) {
-                cv::Point pt = handContour[idx];
+                Point pt = handContour[idx];
                 if (pt.y > state.smoothCenter.y + state.smoothRadius) continue;
                 if (getDist(pt, state.smoothCenter) > protectionRadius) candidates.push_back(pt);
             }
 
-            std::sort(candidates.begin(), candidates.end(), [&](cv::Point a, cv::Point b) {
+            sort(candidates.begin(), candidates.end(), [&](Point a, Point b) {
                 return getDist(a, state.smoothCenter) > getDist(b, state.smoothCenter);
             });
 
-            std::vector<cv::Point> peaks;
-            for (cv::Point p : candidates) {
+            vector<Point> peaks;
+            for (Point p : candidates) {
                 bool isDuplicate = false;
-                for (cv::Point existing : peaks) {
+                for (Point existing : peaks) {
                     if (getDist(p, existing) < state.smoothRadius * 0.8) { isDuplicate = true; break; }
                     if (getAngle(p, state.smoothCenter, existing) < 25) { isDuplicate = true; break; }
                 }
                 if (!isDuplicate) peaks.push_back(p);
             }
 
-            std::vector<cv::Vec4i> defects;
+            vector<Vec4i> defects;
             if (hullIndices.size() > 3) {
-                try { cv::convexityDefects(handContour, hullIndices, defects); } catch (...) {}
+                try { convexityDefects(handContour, hullIndices, defects); } catch (...) {}
             }
             int validDefects = 0;
             for (int i = 0; i < defects.size(); i++) {
-                cv::Point p_start = handContour[defects[i][0]];
-                cv::Point p_end = handContour[defects[i][1]];
-                cv::Point p_far = handContour[defects[i][2]];
+                Point p_start = handContour[defects[i][0]];
+                Point p_end = handContour[defects[i][1]];
+                Point p_far = handContour[defects[i][2]];
                 double depth = defects[i][3] / 256.0;
                 if (depth < state.smoothRadius * 0.4) continue;
                 if (p_far.y > state.smoothCenter.y + state.smoothRadius) continue;
@@ -161,12 +164,12 @@ void processHandInROI(cv::Mat &frame, cv::Rect roiRect, cv::Mat &maskROI, HandDe
                 int pCount = peaks.size();
                 if (pCount >= 2) {
                     currentFingers = pCount;
-                    for(auto p : peaks) cv::line(frame, state.smoothCenter, p, cv::Scalar(0, 255, 0), 2);
+                    for(auto p : peaks) line(frame, state.smoothCenter, p, Scalar(0, 255, 0), 2);
                 }
                 else if (pCount == 1) {
                     if (solidity < 0.92) {
                         currentFingers = 1;
-                        cv::line(frame, state.smoothCenter, peaks[0], cv::Scalar(0, 255, 0), 2);
+                        line(frame, state.smoothCenter, peaks[0], Scalar(0, 255, 0), 2);
                     } else currentFingers = 0;
                 }
                 else currentFingers = 0;
@@ -175,8 +178,8 @@ void processHandInROI(cv::Mat &frame, cv::Rect roiRect, cv::Mat &maskROI, HandDe
 
         if (currentFingers > 5) currentFingers = 5;
 
-        std::vector<std::vector<cv::Point>> dc = {handContour};
-        cv::drawContours(frame, dc, 0, cv::Scalar(100, 100, 100), 1);
+        vector<vector<Point>> dc = {handContour};
+        drawContours(frame, dc, 0, Scalar(100, 100, 100), 1);
 
     } else {
         if (!state.isFirstFrame) {
@@ -188,7 +191,7 @@ void processHandInROI(cv::Mat &frame, cv::Rect roiRect, cv::Mat &maskROI, HandDe
     state.fingerHistory.push_back(currentFingers);
     if (state.fingerHistory.size() > 10) state.fingerHistory.pop_front();
 
-    std::map<int, int> votes;
+    map<int, int> votes;
     for (int val : state.fingerHistory) votes[val]++;
     int maxVotes = 0;
     for (auto const& item : votes) {
@@ -200,39 +203,42 @@ void processHandInROI(cv::Mat &frame, cv::Rect roiRect, cv::Mat &maskROI, HandDe
 }
 
 struct Button {
-    cv::Rect rect;
-    std::string text;
-    cv::Scalar color;
+    Rect rect;
+    string text;
+    Scalar color;
 
-    Button(int x, int y, int w, int h, std::string t) {
-        rect = cv::Rect(x, y, w, h);
+    Button(int x, int y, int w, int h, string t) {
+        rect = Rect(x, y, w, h);
         text = t;
-        color = cv::Scalar(0, 200, 0);
+        color = Scalar(0, 200, 0);
     }
 
-    void draw(cv::Mat &frame, bool isHovered) {
-        cv::Scalar curColor = isHovered ? cv::Scalar(0, 255, 255) : color;
-        cv::rectangle(frame, rect, curColor, 2);
-        if (isHovered) cv::rectangle(frame, rect, cv::Scalar(0, 200, 0), -1);
+    void draw(Mat &frame, bool isHovered) {
+        Scalar curColor = isHovered ? Scalar(0, 255, 255) : color;
+        rectangle(frame, rect, curColor, 2);
+        if (isHovered) rectangle(frame, rect, Scalar(0, 200, 0), -1);
 
-        int fontFace = cv::FONT_HERSHEY_SIMPLEX;
+        int fontFace = FONT_HERSHEY_SIMPLEX;
         double fontScale = 0.8;
         int thickness = 2;
-        cv::Size textSize = cv::getTextSize(text, fontFace, fontScale, thickness, 0);
-        cv::Point textOrg(rect.x + (rect.width - textSize.width)/2, rect.y + (rect.height + textSize.height)/2);
+        Size textSize = getTextSize(text, fontFace, fontScale, thickness, 0);
+        Point textOrg(rect.x + (rect.width - textSize.width)/2, rect.y + (rect.height + textSize.height)/2);
 
-        cv::Scalar textColor = isHovered ? cv::Scalar(255, 255, 255) : curColor;
-        cv::putText(frame, text, textOrg, fontFace, fontScale, textColor, thickness);
+        Scalar textColor = isHovered ? Scalar(255, 255, 255) : curColor;
+        putText(frame, text, textOrg, fontFace, fontScale, textColor, thickness);
     }
 };
 
 int main() {
-    std::srand(std::time(0));
+    srand(time(0));
     Camera myCam;
     HandDetector detector;
     MemeDetector memeDetector;
 
-    cv::VideoCapture cap67("67.mov");
+    VideoCapture cap67("67.mov");
+    VideoCapture capGrizman("grizman.mp4");
+
+    VideoCapture* activeVideoCap = nullptr;
 
     HandState leftHandState;
     HandState rightHandState;
@@ -245,54 +251,59 @@ int main() {
     int moveCooldown = 0;
     int memeComboTimeout = 0;
 
+    int grizmanHoldCounter = 0;
+    const int GRIZMAN_HOLD_LIMIT = 20;
+
     while (true) {
-        cv::Mat frame = myCam.getFrame();
+        Mat frame = myCam.getFrame();
         if (frame.empty()) break;
 
-        cv::flip(frame, frame, 1);
+        flip(frame, frame, 1);
         int w = frame.cols;
         int h = frame.rows;
 
         if (!windowSetup) {
-            cv::namedWindow("Finger Math App", cv::WINDOW_NORMAL);
-            cv::resizeWindow("Finger Math App", w, h);
-            cv::moveWindow("Finger Math App", 0, 0);
+            namedWindow("Finger Math App", WINDOW_NORMAL);
+            resizeWindow("Finger Math App", w, h);
+            moveWindow("Finger Math App", 0, 0);
             windowSetup = true;
         }
 
-        if (isMemePlaying) {
-            cv::Mat vFrame;
-            cap67 >> vFrame;
+        if (isMemePlaying && activeVideoCap != nullptr) {
+            Mat vFrame;
+            *activeVideoCap >> vFrame;
 
             if (vFrame.empty()) {
                 isMemePlaying = false;
-                cv::destroyWindow("Meme Player");
-                std::system("killall afplay");
+                destroyWindow("Meme Player");
+                system("killall afplay 2>/dev/null");
+                activeVideoCap = nullptr;
             } else {
-                cv::Mat displayFrame;
-                cv::resize(vFrame, displayFrame, cv::Size(w, h));
+                Mat displayFrame;
+                resize(vFrame, displayFrame, Size(w, h));
+                imshow("Meme Player", displayFrame);
 
-                cv::imshow("Meme Player", displayFrame);
-
-                if (cv::getWindowProperty("Meme Player", cv::WND_PROP_VISIBLE) < 1) {
+                if (getWindowProperty("Meme Player", WND_PROP_VISIBLE) < 1) {
                      isMemePlaying = false;
-                     cv::destroyWindow("Meme Player");
-                     std::system("killall afplay");
+                     destroyWindow("Meme Player");
+                     system("killall afplay 2>/dev/null");
+                     activeVideoCap = nullptr;
                 }
             }
 
-            cv::imshow("Finger Math App", frame);
+            imshow("Finger Math App", frame);
 
-            int key = cv::waitKey(30);
+            int key = waitKey(1);
             if (key == 27) {
                 isMemePlaying = false;
-                cv::destroyWindow("Meme Player");
-                std::system("killall afplay");
+                destroyWindow("Meme Player");
+                system("killall afplay 2>/dev/null");
+                activeVideoCap = nullptr;
             }
             continue;
         }
 
-        cv::Mat globalMask = detector.detectHand(frame);
+        Mat globalMask = detector.detectHand(frame);
 
         if (appState == STATE_START_SCREEN) {
             int btnY = 30;
@@ -317,22 +328,22 @@ int main() {
             int boxSize = 450;
             if (h < 500) boxSize = h - 50;
             int padding = 20;
-            cv::Rect rectLeft(padding, h - boxSize - padding, boxSize, boxSize);
-            cv::Rect rectRight(w - boxSize - padding, h - boxSize - padding, boxSize, boxSize);
+            Rect rectLeft(padding, h - boxSize - padding, boxSize, boxSize);
+            Rect rectRight(w - boxSize - padding, h - boxSize - padding, boxSize, boxSize);
 
-            cv::Mat maskL = globalMask(rectLeft);
-            cv::Mat maskR = globalMask(rectRight);
+            Mat maskL = globalMask(rectLeft);
+            Mat maskR = globalMask(rectRight);
 
             processHandInROI(frame, rectLeft, maskL, detector, leftHandState, false);
             processHandInROI(frame, rectRight, maskR, detector, rightHandState, false);
 
-            cv::putText(frame, "SELECT MODE", cv::Point(w/2 - 130, h/2), cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255,255,255), 2);
+            putText(frame, "SELECT MODE", Point(w/2 - 130, h/2), FONT_HERSHEY_SIMPLEX, 1, Scalar(255,255,255), 2);
 
             if (pressMath) {
                 appState = STATE_MATH;
                 leftHandState.reset();
                 rightHandState.reset();
-                cv::waitKey(300);
+                waitKey(300);
             }
             if (pressMeme) {
                 appState = STATE_MEME;
@@ -342,7 +353,8 @@ int main() {
                 memeTriggerCount = 0;
                 moveCooldown = 0;
                 memeComboTimeout = 0;
-                cv::waitKey(300);
+                grizmanHoldCounter = 0;
+                waitKey(300);
             }
             if (pressExit) break;
         }
@@ -351,42 +363,42 @@ int main() {
             int boxSize = 450;
             if (h < 500) boxSize = h - 50;
             int padding = 20;
-            cv::Rect rectLeft(padding, h - boxSize - padding, boxSize, boxSize);
-            cv::Rect rectRight(w - boxSize - padding, h - boxSize - padding, boxSize, boxSize);
+            Rect rectLeft(padding, h - boxSize - padding, boxSize, boxSize);
+            Rect rectRight(w - boxSize - padding, h - boxSize - padding, boxSize, boxSize);
 
             Button backBtn(20, 20, 100, 40, "MENU");
             bool pressBack = checkButtonPress(frame, backBtn.rect, detector);
             backBtn.draw(frame, pressBack);
 
-            cv::Mat maskL = globalMask(rectLeft);
-            cv::Mat maskR = globalMask(rectRight);
+            Mat maskL = globalMask(rectLeft);
+            Mat maskR = globalMask(rectRight);
 
             processHandInROI(frame, rectLeft, maskL, detector, leftHandState, true);
             processHandInROI(frame, rectRight, maskR, detector, rightHandState, true);
 
-            cv::Scalar colorL = (leftHandState.displayedFingers > 0) ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255);
-            cv::putText(frame, std::to_string(leftHandState.displayedFingers), rectLeft.tl() + cv::Point(20, -20), cv::FONT_HERSHEY_SIMPLEX, 2, colorL, 4);
+            Scalar colorL = (leftHandState.displayedFingers > 0) ? Scalar(0, 255, 0) : Scalar(0, 0, 255);
+            putText(frame, to_string(leftHandState.displayedFingers), rectLeft.tl() + Point(20, -20), FONT_HERSHEY_SIMPLEX, 2, colorL, 4);
 
-            cv::Scalar colorR = (rightHandState.displayedFingers > 0) ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255);
-            cv::putText(frame, std::to_string(rightHandState.displayedFingers), rectRight.tl() + cv::Point(20, -20), cv::FONT_HERSHEY_SIMPLEX, 2, colorR, 4);
+            Scalar colorR = (rightHandState.displayedFingers > 0) ? Scalar(0, 255, 0) : Scalar(0, 0, 255);
+            putText(frame, to_string(rightHandState.displayedFingers), rectRight.tl() + Point(20, -20), FONT_HERSHEY_SIMPLEX, 2, colorR, 4);
 
             int totalSum = leftHandState.displayedFingers + rightHandState.displayedFingers;
-            std::string sumText = std::to_string(totalSum);
+            string sumText = to_string(totalSum);
             int baseLine = 0;
-            cv::Size sumSize = cv::getTextSize(sumText, cv::FONT_HERSHEY_SIMPLEX, 4.0, 5, &baseLine);
+            Size sumSize = getTextSize(sumText, FONT_HERSHEY_SIMPLEX, 4.0, 5, &baseLine);
             int boxPadX = 40; int boxPadY = 25;
             int boxW = sumSize.width + boxPadX * 2;
             int boxH = sumSize.height + boxPadY * 2 + baseLine;
             int boxX = w / 2 - boxW / 2;
             int boxY = 80;
 
-            cv::rectangle(frame, cv::Rect(boxX, boxY, boxW, boxH), cv::Scalar(50, 50, 50), -1);
-            cv::rectangle(frame, cv::Rect(boxX, boxY, boxW, boxH), cv::Scalar(0, 215, 255), 4);
-            cv::putText(frame, sumText, cv::Point(boxX + boxPadX, boxY + boxPadY + sumSize.height), cv::FONT_HERSHEY_SIMPLEX, 4.0, cv::Scalar(0, 255, 255), 5);
+            rectangle(frame, Rect(boxX, boxY, boxW, boxH), Scalar(50, 50, 50), -1);
+            rectangle(frame, Rect(boxX, boxY, boxW, boxH), Scalar(0, 215, 255), 4);
+            putText(frame, sumText, Point(boxX + boxPadX, boxY + boxPadY + sumSize.height), FONT_HERSHEY_SIMPLEX, 4.0, Scalar(0, 255, 255), 5);
 
             if (pressBack) {
                 appState = STATE_START_SCREEN;
-                cv::waitKey(300);
+                waitKey(300);
             }
         }
 
@@ -395,11 +407,11 @@ int main() {
             bool pressBack = checkButtonPress(frame, backBtn.rect, detector);
             backBtn.draw(frame, pressBack);
 
-            cv::Rect fullLeft(20, 80, w/2 - 40, h - 100);
-            cv::Rect fullRight(w/2 + 20, 80, w/2 - 40, h - 100);
+            Rect fullLeft(20, 80, w/2 - 40, h - 100);
+            Rect fullRight(w/2 + 20, 80, w/2 - 40, h - 100);
 
-            cv::Mat maskL = globalMask(fullLeft);
-            cv::Mat maskR = globalMask(fullRight);
+            Mat maskL = globalMask(fullLeft);
+            Mat maskR = globalMask(fullRight);
 
             processHandInROI(frame, fullLeft, maskL, detector, leftHandState, true);
             processHandInROI(frame, fullRight, maskR, detector, rightHandState, true);
@@ -407,28 +419,34 @@ int main() {
             MemeType memeL = memeDetector.detect(leftHandState.positionHistory, leftHandState.displayedFingers);
             MemeType memeR = memeDetector.detect(rightHandState.positionHistory, rightHandState.displayedFingers);
 
-            cv::putText(frame, "DO THE WEIGHING!", cv::Point(w/2 - 130, 100), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(200,200,200), 2);
+            putText(frame, "DO A GESTURE!", Point(w/2 - 100, 100), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200,200,200), 2);
 
-            std::string comboText = "COMBO: " + std::to_string(memeTriggerCount) + "/3";
-            cv::putText(frame, comboText, cv::Point(w/2 - 80, 150), cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(0, 255, 255), 2);
+            string comboText = "WEIGH: " + to_string(memeTriggerCount) + "/4";
+            putText(frame, comboText, Point(w/2 - 80, 140), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(0, 255, 255), 2);
+
+            if (grizmanHoldCounter > 0) {
+                int barWidth = 200;
+                int filledWidth = (int)((float)grizmanHoldCounter / GRIZMAN_HOLD_LIMIT * barWidth);
+                if (filledWidth > barWidth) filledWidth = barWidth;
+
+                Rect barRect(w/2 - 100, 160, barWidth, 20);
+                rectangle(frame, barRect, Scalar(100,100,100), 2);
+                rectangle(frame, Rect(w/2 - 100, 160, filledWidth, 20), Scalar(0, 0, 255), -1);
+                putText(frame, "HOLD GRIZMAN...", Point(w/2 - 80, 175), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255,255,255), 1);
+            }
 
             int histL = leftHandState.positionHistory.size();
             int histR = rightHandState.positionHistory.size();
-
             bool isSyncMove = false;
-
             if (histL > 3 && histR > 3) {
                 int dyL = leftHandState.positionHistory.back().y - leftHandState.positionHistory[histL - 3].y;
                 int dyR = rightHandState.positionHistory.back().y - rightHandState.positionHistory[histR - 3].y;
-
-                if (dyL * dyR < 0 && std::abs(dyL) > 35 && std::abs(dyR) > 35) {
+                if (dyL * dyR < 0 && abs(dyL) > 35 && abs(dyR) > 35) {
                     isSyncMove = true;
                 }
             }
-
             if (memeComboTimeout > 0) memeComboTimeout--;
             else memeTriggerCount = 0;
-
             if (moveCooldown > 0) moveCooldown--;
 
             if (memeL == MEME_67 && memeR == MEME_67 && isSyncMove) {
@@ -436,32 +454,52 @@ int main() {
                     memeTriggerCount++;
                     moveCooldown = 5;
                     memeComboTimeout = 30;
+                    grizmanHoldCounter = 0;
                 }
             }
 
-            if (memeTriggerCount >= 3) {
+            if (memeTriggerCount >= 4) {
                 isMemePlaying = true;
-                cap67.set(cv::CAP_PROP_POS_FRAMES, 0);
+                activeVideoCap = &cap67;
+                cap67.set(CAP_PROP_POS_FRAMES, 0);
 
-                cv::namedWindow("Meme Player", cv::WINDOW_NORMAL);
-                cv::resizeWindow("Meme Player", w, h);
-                int rx = std::rand() % 200;
-                int ry = std::rand() % 200;
-                cv::moveWindow("Meme Player", rx, ry);
+                namedWindow("Meme Player", WINDOW_NORMAL);
+                resizeWindow("Meme Player", w, h);
+                moveWindow("Meme Player", rand() % 200, rand() % 200);
 
-                std::system("afplay 67.mov &");
+                system("afplay 67.mov &");
                 memeTriggerCount = 0;
+            }
+
+            if (memeL == MEME_GRIZMAN || memeR == MEME_GRIZMAN) {
+                grizmanHoldCounter += 1;
+                memeTriggerCount = 0;
+            } else {
+                grizmanHoldCounter = max(0, grizmanHoldCounter - 2);
+            }
+
+            if (grizmanHoldCounter >= GRIZMAN_HOLD_LIMIT) {
+                isMemePlaying = true;
+                activeVideoCap = &capGrizman;
+                capGrizman.set(CAP_PROP_POS_FRAMES, 0);
+
+                namedWindow("Meme Player", WINDOW_NORMAL);
+                resizeWindow("Meme Player", w, h);
+                moveWindow("Meme Player", rand() % 200, rand() % 200);
+
+                system("afplay grizman.mp4 &");
+                grizmanHoldCounter = 0;
             }
 
 
             if (pressBack) {
                 appState = STATE_START_SCREEN;
-                cv::waitKey(300);
+                waitKey(300);
             }
         }
 
-        cv::imshow("Finger Math App", frame);
-        if (cv::waitKey(1) == 27) break;
+        imshow("Finger Math App", frame);
+        if (waitKey(1) == 27) break;
     }
     return 0;
 }

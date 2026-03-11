@@ -5,7 +5,8 @@
 
 enum MemeType {
     MEME_NONE,
-    MEME_67
+    MEME_67,
+    MEME_GRIZMAN // Новый тип
 };
 
 class MemeDetector {
