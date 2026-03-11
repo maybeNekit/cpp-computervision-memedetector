@@ -299,4 +299,99 @@ private:
     VideoCapture& capGrizman;
     VideoCapture* activeVideoCap = nullptr;
 
+    bool isMemePlaying = false;
+    int memeTriggerCount = 0;
+    int moveCooldown = 0;
+    int memeComboTimeout = 0;
+    int grizmanHoldCounter = 0; 
+    const int GRIZMAN_HOLD_LIMIT = 20;
+
+public:
+    MemeMode(VideoCapture& v67, VideoCapture& vGriz) : cap67(v67), capGrizman(vGriz) {}
+
+    NextState update(cv::Mat& frame, cv::Mat& globalMask, HandDetector& detector) override {
+        int w = frame.cols; int h = frame.rows;
+
+        if (isMemePlaying && activeVideoCap != nullptr) {
+            Mat vFrame;
+            *activeVideoCap >> vFrame;
+            if (vFrame.empty()) {
+                stopVideo();
+            } else {
+                Mat displayFrame;
+                resize(vFrame, displayFrame, Size(w, h));
+                imshow("Meme Player", displayFrame);
+                if (getWindowProperty("Meme Player", WND_PROP_VISIBLE) < 1) stopVideo();
+            }
+            return NextState::KEEP_CURRENT;
+        }
+
+        Button backBtn(20, 20, 100, 40, "MENU");
+        bool pressBack = checkButtonPress(frame, backBtn.rect, detector);
+        backBtn.draw(frame, pressBack);
+
+        Rect fullLeft(20, 80, w/2 - 40, h - 100);
+        Rect fullRight(w/2 + 20, 80, w/2 - 40, h - 100);
+
+        Mat maskL = globalMask(fullLeft);
+        Mat maskR = globalMask(fullRight);
+
+        processHandInROI(frame, fullLeft, maskL, detector, leftHandState, true);
+        processHandInROI(frame, fullRight, maskR, detector, rightHandState, true);
+
+        MemeType memeL = memeDetector.detect(leftHandState.positionHistory, leftHandState.displayedFingers);
+        MemeType memeR = memeDetector.detect(rightHandState.positionHistory, rightHandState.displayedFingers);
+        
+        putText(frame, "DO A GESTURE!", Point(w/2 - 100, 100), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200,200,200), 2);
+        putText(frame, "WEIGH: " + to_string(memeTriggerCount) + "/4", Point(w/2 - 80, 140), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(0, 255, 255), 2);
+
+        if (grizmanHoldCounter > 0) {
+            int filledWidth = min(200, (int)((float)grizmanHoldCounter / GRIZMAN_HOLD_LIMIT * 200));
+            rectangle(frame, Rect(w/2 - 100, 160, 200, 20), Scalar(100,100,100), 2);
+            rectangle(frame, Rect(w/2 - 100, 160, filledWidth, 20), Scalar(0, 0, 255), -1);
+            putText(frame, "HOLD GRIZMAN...", Point(w/2 - 80, 175), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255,255,255), 1);
+        }
+
+        int histL = leftHandState.positionHistory.size();
+        int histR = rightHandState.positionHistory.size();
+        bool isSyncMove = false;
+        if (histL > 3 && histR > 3) {
+            int dyL = leftHandState.positionHistory.back().y - leftHandState.positionHistory[histL - 3].y;
+            int dyR = rightHandState.positionHistory.back().y - rightHandState.positionHistory[histR - 3].y;
+            if (dyL * dyR < 0 && abs(dyL) > 35 && abs(dyR) > 35) isSyncMove = true;
+        }
+
+        if (memeComboTimeout > 0) memeComboTimeout--; else memeTriggerCount = 0;
+        if (moveCooldown > 0) moveCooldown--;
+
+        if (memeL == MEME_67 && memeR == MEME_67 && isSyncMove && moveCooldown == 0) {
+            memeTriggerCount++;
+            moveCooldown = 5;
+            memeComboTimeout = 30;
+            grizmanHoldCounter = 0; 
+        }
+
+        if (memeTriggerCount >= 4) {
+            playVideo(&cap67, "67.mov", w, h);
+            memeTriggerCount = 0;
+        }
+
+        if (memeL == MEME_GRIZMAN || memeR == MEME_GRIZMAN) {
+            grizmanHoldCounter += 1; 
+            memeTriggerCount = 0; 
+        } else {
+            grizmanHoldCounter = max(0, grizmanHoldCounter - 2); 
+        }
+
+        if (grizmanHoldCounter >= GRIZMAN_HOLD_LIMIT) {
+            playVideo(&capGrizman, "grizman.mp4", w, h);
+            grizmanHoldCounter = 0;
+        }
+
+        if (pressBack) { waitKey(300); stopVideo(); return NextState::GO_MENU; }
+        return NextState::KEEP_CURRENT;
+    }
+
+    
+
 
