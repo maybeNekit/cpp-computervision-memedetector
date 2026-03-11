@@ -113,3 +113,96 @@ void processHandInROI(Mat &frame, Rect roiRect, Mat &maskROI, HandDetector &dete
         double areaContour = contourArea(handContour);
         double areaHull = contourArea(hullPoints);
         double solidity = areaContour / areaHull;
+        
+
+        if (solidity > 0.94) {
+            currentFingers = 0;
+        } else {
+            vector<Point> candidates;
+            for (int idx : hullIndices) {
+                Point pt = handContour[idx];
+                if (pt.y > state.smoothCenter.y + state.smoothRadius) continue; 
+                if (getDist(pt, state.smoothCenter) > protectionRadius) candidates.push_back(pt);
+            }
+
+            sort(candidates.begin(), candidates.end(), [&](Point a, Point b) {
+                return getDist(a, state.smoothCenter) > getDist(b, state.smoothCenter);
+            });
+
+            vector<Point> peaks;
+            for (Point p : candidates) {
+                bool isDuplicate = false;
+                for (Point existing : peaks) {
+                    if (getDist(p, existing) < state.smoothRadius * 0.8) { isDuplicate = true; break; }
+                    if (getAngle(p, state.smoothCenter, existing) < 25) { isDuplicate = true; break; }
+                }
+                if (!isDuplicate) peaks.push_back(p);
+            }
+
+            vector<Vec4i> defects;
+            if (hullIndices.size() > 3) {
+                try { convexityDefects(handContour, hullIndices, defects); } catch (...) {}
+            }
+            int validDefects = 0;
+            for (int i = 0; i < defects.size(); i++) {
+                Point p_start = handContour[defects[i][0]];
+                Point p_end = handContour[defects[i][1]];
+                Point p_far = handContour[defects[i][2]];
+                double depth = defects[i][3] / 256.0;
+                if (depth < state.smoothRadius * 0.4) continue; 
+                if (p_far.y > state.smoothCenter.y + state.smoothRadius) continue;
+                if (getAngle(p_start, p_far, p_end) < 95) validDefects++;
+            }
+
+            if (validDefects >= 1) currentFingers = validDefects + 1;
+            else {
+                int pCount = peaks.size();
+                if (pCount >= 2) {
+                    currentFingers = pCount; 
+                    for(auto p : peaks) line(frame, state.smoothCenter, p, Scalar(0, 255, 0), 2);
+                } else if (pCount == 1) {
+                    if (solidity < 0.92) {
+                        currentFingers = 1;
+                        line(frame, state.smoothCenter, peaks[0], Scalar(0, 255, 0), 2);
+                    } else currentFingers = 0; 
+                } else currentFingers = 0;
+            }
+        }
+        if (currentFingers > 5) currentFingers = 5;
+        vector<vector<Point>> dc = {handContour};
+        drawContours(frame, dc, 0, Scalar(100, 100, 100), 1);
+    } else {
+        if (!state.isFirstFrame) state.reset();
+        currentFingers = 0;
+    }
+
+    state.fingerHistory.push_back(currentFingers);
+    if (state.fingerHistory.size() > 10) state.fingerHistory.pop_front();
+
+    map<int, int> votes;
+    for (int val : state.fingerHistory) votes[val]++;
+    int maxVotes = 0;
+    for (auto const& item : votes) {
+        if (item.second > maxVotes) {
+            maxVotes = item.second;
+            state.displayedFingers = item.first;
+        }
+    }
+}
+
+struct Button {
+    Rect rect; string text; Scalar color;
+    Button(int x, int y, int w, int h, string t) : rect(Rect(x, y, w, h)), text(t), color(Scalar(0, 200, 0)) {}
+
+    void draw(Mat &frame, bool isHovered) {
+        Scalar curColor = isHovered ? Scalar(0, 255, 255) : color;
+        rectangle(frame, rect, curColor, 2);
+        if (isHovered) rectangle(frame, rect, Scalar(0, 200, 0), -1);
+
+        Size textSize = getTextSize(text, FONT_HERSHEY_SIMPLEX, 0.8, 2, 0);
+        Point textOrg(rect.x + (rect.width - textSize.width)/2, rect.y + (rect.height + textSize.height)/2);
+        putText(frame, text, textOrg, FONT_HERSHEY_SIMPLEX, 0.8, isHovered ? Scalar(255, 255, 255) : curColor, 2);
+    }
+};
+
+
