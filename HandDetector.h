@@ -1,16 +1,17 @@
 #pragma once
 #include <opencv2/opencv.hpp>
 #include <vector>
+#include <deque>
+#include <optional>
 
-class HandDetector {
-private:
-    cv::CascadeClassifier faceDetector;
+enum MemeType {
+    MEME_67,
+    MEME_GRIZMAN
+};
 
+
+
+class MemeDetector {
 public:
-    HandDetector();
-    ~HandDetector();
-    cv::Mat detectHand(cv::Mat inputFrame);
-    std::vector<cv::Point> findHandContour(cv::Mat mask);
-
-    cv::Point getPalmCenter(cv::Mat mask, double &radius);
+    std::optional<MemeType> detect(const std::deque<cv::Point>& positionHistory, int fingerCount);
 };
