@@ -14,13 +14,11 @@ Camera::Camera() {
     }
 }
 
-
 Camera::~Camera() {
 
     cap.release();
     std::cout << "Камера выключена." << std::endl;
 }
-
 
 cv::Mat Camera::getFrame() {
     cv::Mat frame;

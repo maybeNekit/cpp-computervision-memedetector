@@ -81,7 +81,6 @@ cv::Point HandDetector::getPalmCenter(cv::Mat mask, double &radius) {
 
     searchZone = searchZone & cv::Rect(0, 0, mask.cols, mask.rows);
 
-
     double maxVal;
     cv::Point maxLoc;
     cv::Mat distROI = dist(searchZone);

@@ -9,7 +9,6 @@ private:
 public:
     HandDetector();
     ~HandDetector();
-
     cv::Mat detectHand(cv::Mat inputFrame);
     std::vector<cv::Point> findHandContour(cv::Mat mask);
 
