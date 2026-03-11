@@ -9,7 +9,6 @@ enum class NextState {
     GO_MEME,
     EXIT
 };
-
 class AppMode {
 public:
     virtual ~AppMode() = default; 

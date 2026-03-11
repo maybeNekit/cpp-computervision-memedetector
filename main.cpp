@@ -113,7 +113,6 @@ void processHandInROI(Mat &frame, Rect roiRect, Mat &maskROI, HandDetector &dete
         double areaContour = contourArea(handContour);
         double areaHull = contourArea(hullPoints);
         double solidity = areaContour / areaHull;
-        
 
         if (solidity > 0.94) {
             currentFingers = 0;
@@ -121,7 +120,7 @@ void processHandInROI(Mat &frame, Rect roiRect, Mat &maskROI, HandDetector &dete
             vector<Point> candidates;
             for (int idx : hullIndices) {
                 Point pt = handContour[idx];
-                if (pt.y > state.smoothCenter.y + state.smoothRadius) continue; 
+                if (pt.y > state.smoothCenter.y + state.smoothRadius) continue;
                 if (getDist(pt, state.smoothCenter) > protectionRadius) candidates.push_back(pt);
             }
 
@@ -149,7 +148,7 @@ void processHandInROI(Mat &frame, Rect roiRect, Mat &maskROI, HandDetector &dete
                 Point p_end = handContour[defects[i][1]];
                 Point p_far = handContour[defects[i][2]];
                 double depth = defects[i][3] / 256.0;
-                if (depth < state.smoothRadius * 0.4) continue; 
+                if (depth < state.smoothRadius * 0.4) continue;
                 if (p_far.y > state.smoothCenter.y + state.smoothRadius) continue;
                 if (getAngle(p_start, p_far, p_end) < 95) validDefects++;
             }
@@ -158,13 +157,13 @@ void processHandInROI(Mat &frame, Rect roiRect, Mat &maskROI, HandDetector &dete
             else {
                 int pCount = peaks.size();
                 if (pCount >= 2) {
-                    currentFingers = pCount; 
+                    currentFingers = pCount;
                     for(auto p : peaks) line(frame, state.smoothCenter, p, Scalar(0, 255, 0), 2);
                 } else if (pCount == 1) {
                     if (solidity < 0.92) {
                         currentFingers = 1;
                         line(frame, state.smoothCenter, peaks[0], Scalar(0, 255, 0), 2);
-                    } else currentFingers = 0; 
+                    } else currentFingers = 0;
                 } else currentFingers = 0;
             }
         }
@@ -204,7 +203,6 @@ struct Button {
         putText(frame, text, textOrg, FONT_HERSHEY_SIMPLEX, 0.8, isHovered ? Scalar(255, 255, 255) : curColor, 2);
     }
 };
-
 
 class MenuMode : public AppMode {
 private:
@@ -274,14 +272,14 @@ public:
 
         Scalar colorR = (rightHandState.displayedFingers > 0) ? Scalar(0, 255, 0) : Scalar(0, 0, 255);
         putText(frame, to_string(rightHandState.displayedFingers), rectRight.tl() + Point(20, -20), FONT_HERSHEY_SIMPLEX, 2, colorR, 4);
-        
+
         int totalSum = leftHandState.displayedFingers + rightHandState.displayedFingers;
         string sumText = to_string(totalSum);
         int baseLine = 0;
         Size sumSize = getTextSize(sumText, FONT_HERSHEY_SIMPLEX, 4.0, 5, &baseLine);
         int boxX = w / 2 - (sumSize.width + 80) / 2;
-        
-        rectangle(frame, Rect(boxX, 80, sumSize.width + 80, sumSize.height + 50 + baseLine), Scalar(50, 50, 50), -1); 
+
+        rectangle(frame, Rect(boxX, 80, sumSize.width + 80, sumSize.height + 50 + baseLine), Scalar(50, 50, 50), -1);
         rectangle(frame, Rect(boxX, 80, sumSize.width + 80, sumSize.height + 50 + baseLine), Scalar(0, 215, 255), 4);
         putText(frame, sumText, Point(boxX + 40, 80 + 25 + sumSize.height), FONT_HERSHEY_SIMPLEX, 4.0, Scalar(0, 255, 255), 5);
 
@@ -303,7 +301,7 @@ private:
     int memeTriggerCount = 0;
     int moveCooldown = 0;
     int memeComboTimeout = 0;
-    int grizmanHoldCounter = 0; 
+    int grizmanHoldCounter = 0;
     const int GRIZMAN_HOLD_LIMIT = 20;
 
 public:
@@ -341,7 +339,7 @@ public:
 
         MemeType memeL = memeDetector.detect(leftHandState.positionHistory, leftHandState.displayedFingers);
         MemeType memeR = memeDetector.detect(rightHandState.positionHistory, rightHandState.displayedFingers);
-        
+
         putText(frame, "DO A GESTURE!", Point(w/2 - 100, 100), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200,200,200), 2);
         putText(frame, "WEIGH: " + to_string(memeTriggerCount) + "/4", Point(w/2 - 80, 140), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(0, 255, 255), 2);
 
@@ -368,7 +366,7 @@ public:
             memeTriggerCount++;
             moveCooldown = 5;
             memeComboTimeout = 30;
-            grizmanHoldCounter = 0; 
+            grizmanHoldCounter = 0;
         }
 
         if (memeTriggerCount >= 4) {
@@ -377,10 +375,10 @@ public:
         }
 
         if (memeL == MEME_GRIZMAN || memeR == MEME_GRIZMAN) {
-            grizmanHoldCounter += 1; 
-            memeTriggerCount = 0; 
+            grizmanHoldCounter += 1;
+            memeTriggerCount = 0;
         } else {
-            grizmanHoldCounter = max(0, grizmanHoldCounter - 2); 
+            grizmanHoldCounter = max(0, grizmanHoldCounter - 2);
         }
 
         if (grizmanHoldCounter >= GRIZMAN_HOLD_LIMIT) {
@@ -391,8 +389,6 @@ public:
         if (pressBack) { waitKey(300); stopVideo(); return NextState::GO_MENU; }
         return NextState::KEEP_CURRENT;
     }
-
-
 
 private:
     void playVideo(VideoCapture* cap, const string& audioFile, int w, int h) {
@@ -418,19 +414,19 @@ int main() {
     srand(time(0));
     Camera myCam;
     HandDetector detector;
-    
+
     VideoCapture cap67("67.mov");
     VideoCapture capGrizman("grizman.mp4");
 
     unique_ptr<AppMode> currentMode = make_unique<MenuMode>();
 
     namedWindow("Finger Math App", WINDOW_NORMAL);
-    
+
     while (true) {
         Mat frame = myCam.getFrame();
         if (frame.empty()) break;
         flip(frame, frame, 1);
-        
+
         Mat globalMask = detector.detectHand(frame);
 
         NextState next = currentMode->update(frame, globalMask, detector);
@@ -448,11 +444,6 @@ int main() {
         imshow("Finger Math App", frame);
         if (waitKey(1) == 27) break;
     }
-    
     system("killall afplay 2>/dev/null");
     return 0;
 }
-
-    
-
-
