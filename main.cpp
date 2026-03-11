@@ -206,3 +206,97 @@ struct Button {
 };
 
 
+class MenuMode : public AppMode {
+private:
+    HandState leftHandState;
+    HandState rightHandState;
+public:
+    NextState update(cv::Mat& frame, cv::Mat& globalMask, HandDetector& detector) override {
+        int w = frame.cols; int h = frame.rows;
+        int btnW = 200; int btnH = 60; int gap = 20;
+        int startX = w/2 - (btnW * 3 + gap * 2)/2;
+
+        Button mathBtn(startX, 30, btnW, btnH, "FINGER MATH");
+        Button memeBtn(startX + btnW + gap, 30, btnW, btnH, "MEME DETECTOR");
+        Button exitBtn(startX + (btnW + gap) * 2, 30, btnW, btnH, "EXIT");
+
+        bool pressMath = checkButtonPress(frame, mathBtn.rect, detector);
+        bool pressMeme = checkButtonPress(frame, memeBtn.rect, detector);
+        bool pressExit = checkButtonPress(frame, exitBtn.rect, detector);
+
+        mathBtn.draw(frame, pressMath);
+        memeBtn.draw(frame, pressMeme);
+        exitBtn.draw(frame, pressExit);
+
+        int boxSize = (h < 500) ? h - 50 : 450;
+        Rect rectLeft(20, h - boxSize - 20, boxSize, boxSize);
+        Rect rectRight(w - boxSize - 20, h - boxSize - 20, boxSize, boxSize);
+
+        Mat maskL = globalMask(rectLeft);
+        Mat maskR = globalMask(rectRight);
+
+        processHandInROI(frame, rectLeft, maskL, detector, leftHandState, false);
+        processHandInROI(frame, rectRight, maskR, detector, rightHandState, false);
+
+        putText(frame, "SELECT MODE", Point(w/2 - 130, h/2), FONT_HERSHEY_SIMPLEX, 1, Scalar(255,255,255), 2);
+
+        if (pressMath) { waitKey(300); return NextState::GO_MATH; }
+        if (pressMeme) { waitKey(300); return NextState::GO_MEME; }
+        if (pressExit) return NextState::EXIT;
+
+        return NextState::KEEP_CURRENT;
+    }
+};
+
+class MathMode : public AppMode {
+private:
+    HandState leftHandState;
+    HandState rightHandState;
+public:
+    NextState update(cv::Mat& frame, cv::Mat& globalMask, HandDetector& detector) override {
+        int w = frame.cols; int h = frame.rows;
+        int boxSize = (h < 500) ? h - 50 : 450;
+        Rect rectLeft(20, h - boxSize - 20, boxSize, boxSize);
+        Rect rectRight(w - boxSize - 20, h - boxSize - 20, boxSize, boxSize);
+
+        Button backBtn(20, 20, 100, 40, "MENU");
+        bool pressBack = checkButtonPress(frame, backBtn.rect, detector);
+        backBtn.draw(frame, pressBack);
+
+        Mat maskL = globalMask(rectLeft);
+        Mat maskR = globalMask(rectRight);
+
+        processHandInROI(frame, rectLeft, maskL, detector, leftHandState, true);
+        processHandInROI(frame, rectRight, maskR, detector, rightHandState, true);
+
+        Scalar colorL = (leftHandState.displayedFingers > 0) ? Scalar(0, 255, 0) : Scalar(0, 0, 255);
+        putText(frame, to_string(leftHandState.displayedFingers), rectLeft.tl() + Point(20, -20), FONT_HERSHEY_SIMPLEX, 2, colorL, 4);
+
+        Scalar colorR = (rightHandState.displayedFingers > 0) ? Scalar(0, 255, 0) : Scalar(0, 0, 255);
+        putText(frame, to_string(rightHandState.displayedFingers), rectRight.tl() + Point(20, -20), FONT_HERSHEY_SIMPLEX, 2, colorR, 4);
+        
+        int totalSum = leftHandState.displayedFingers + rightHandState.displayedFingers;
+        string sumText = to_string(totalSum);
+        int baseLine = 0;
+        Size sumSize = getTextSize(sumText, FONT_HERSHEY_SIMPLEX, 4.0, 5, &baseLine);
+        int boxX = w / 2 - (sumSize.width + 80) / 2;
+        
+        rectangle(frame, Rect(boxX, 80, sumSize.width + 80, sumSize.height + 50 + baseLine), Scalar(50, 50, 50), -1); 
+        rectangle(frame, Rect(boxX, 80, sumSize.width + 80, sumSize.height + 50 + baseLine), Scalar(0, 215, 255), 4);
+        putText(frame, sumText, Point(boxX + 40, 80 + 25 + sumSize.height), FONT_HERSHEY_SIMPLEX, 4.0, Scalar(0, 255, 255), 5);
+
+        if (pressBack) { waitKey(300); return NextState::GO_MENU; }
+        return NextState::KEEP_CURRENT;
+    }
+};
+
+class MemeMode : public AppMode {
+private:
+    HandState leftHandState;
+    HandState rightHandState;
+    MemeDetector memeDetector;
+    VideoCapture& cap67;
+    VideoCapture& capGrizman;
+    VideoCapture* activeVideoCap = nullptr;
+
+
