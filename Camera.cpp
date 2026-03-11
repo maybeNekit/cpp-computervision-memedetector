@@ -7,8 +7,6 @@ Camera::Camera() {
     }
 }
 
-
-
 Camera::~Camera() {
     cap.release();
 }

@@ -2,14 +2,14 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 #include <deque>
+#include <optional>
 
 enum MemeType {
-    MEME_NONE,
     MEME_67,
-    MEME_GRIZMAN // Новый тип
+    MEME_GRIZMAN
 };
 
 class MemeDetector {
 public:
-    MemeType detect(const std::deque<cv::Point>& positionHistory, int fingerCount);
+    std::optional<MemeType> detect(const std::deque<cv::Point>& positionHistory, int fingerCount);
 };

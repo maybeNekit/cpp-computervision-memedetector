@@ -12,9 +12,8 @@ class Camera {
 private:
     cv::VideoCapture cap;
 
-
 public:
     Camera();
     ~Camera();
-    cv::Mat getFrame(); 
+    cv::Mat getFrame();
 };

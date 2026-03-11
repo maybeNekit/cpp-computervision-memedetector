@@ -8,11 +8,12 @@
 #include <cstdlib> 
 #include <ctime>
 #include <memory> 
+#include <optional>
 
 #include "Camera.h"
 #include "HandDetector.h"
 #include "MemeDetector.h"
-#include "AppMode.h" 
+#include "AppMode.h"
 
 using namespace cv;
 using namespace std;
@@ -20,8 +21,8 @@ using namespace std;
 struct HandState {
     deque<int> fingerHistory;
     deque<double> radiusBuffer;
-    deque<Point> positionHistory; 
-    static const int bufferLimit = 100; 
+    deque<Point> positionHistory;
+    static const int bufferLimit = 100;
 
     Point smoothCenter = Point(0, 0);
     double smoothRadius = 0;
@@ -59,7 +60,7 @@ bool checkButtonPress(Mat &frame, Rect btnRect, HandDetector &detector) {
     Mat roi = frame(btnRect);
     Mat mask = detector.detectHand(roi);
     int skinPixels = countNonZero(mask);
-    return (skinPixels > 60); 
+    return (skinPixels > 60);
 }
 
 void processHandInROI(Mat &frame, Rect roiRect, Mat &maskROI, HandDetector &detector, HandState &state, bool drawBox) {
@@ -97,7 +98,7 @@ void processHandInROI(Mat &frame, Rect roiRect, Mat &maskROI, HandDetector &dete
             state.smoothCenter.x = (int)(state.smoothCenter.x * (1 - speed) + globalCenter.x * speed);
             state.smoothCenter.y = (int)(state.smoothCenter.y * (1 - speed) + globalCenter.y * speed);
         }
-        
+
         state.positionHistory.push_back(state.smoothCenter);
         if (state.positionHistory.size() > 20) state.positionHistory.pop_front();
 
@@ -337,8 +338,8 @@ public:
         processHandInROI(frame, fullLeft, maskL, detector, leftHandState, true);
         processHandInROI(frame, fullRight, maskR, detector, rightHandState, true);
 
-        MemeType memeL = memeDetector.detect(leftHandState.positionHistory, leftHandState.displayedFingers);
-        MemeType memeR = memeDetector.detect(rightHandState.positionHistory, rightHandState.displayedFingers);
+        optional<MemeType> memeL = memeDetector.detect(leftHandState.positionHistory, leftHandState.displayedFingers);
+        optional<MemeType> memeR = memeDetector.detect(rightHandState.positionHistory, rightHandState.displayedFingers);
 
         putText(frame, "DO A GESTURE!", Point(w/2 - 100, 100), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200,200,200), 2);
         putText(frame, "WEIGH: " + to_string(memeTriggerCount) + "/4", Point(w/2 - 80, 140), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(0, 255, 255), 2);
@@ -412,38 +413,47 @@ private:
 
 int main() {
     srand(time(0));
-    Camera myCam;
-    HandDetector detector;
+    try {
+        Camera myCam;
+        HandDetector detector;
 
-    VideoCapture cap67("67.mov");
-    VideoCapture capGrizman("grizman.mp4");
+        VideoCapture cap67("67.mov");
+        VideoCapture capGrizman("grizman.mp4");
 
-    unique_ptr<AppMode> currentMode = make_unique<MenuMode>();
+        unique_ptr<AppMode> currentMode = make_unique<MenuMode>();
 
-    namedWindow("Finger Math App", WINDOW_NORMAL);
+        namedWindow("Finger Math App", WINDOW_NORMAL);
 
-    while (true) {
-        Mat frame = myCam.getFrame();
-        if (frame.empty()) break;
-        flip(frame, frame, 1);
+        while (true) {
+            Mat frame = myCam.getFrame();
+            if (frame.empty()) break;
+            flip(frame, frame, 1);
 
-        Mat globalMask = detector.detectHand(frame);
+            Mat globalMask = detector.detectHand(frame);
 
-        NextState next = currentMode->update(frame, globalMask, detector);
+            NextState next = currentMode->update(frame, globalMask, detector);
 
-        if (next == NextState::GO_MATH) {
-            currentMode = make_unique<MathMode>();
-        } else if (next == NextState::GO_MEME) {
-            currentMode = make_unique<MemeMode>(cap67, capGrizman);
-        } else if (next == NextState::GO_MENU) {
-            currentMode = make_unique<MenuMode>();
-        } else if (next == NextState::EXIT) {
-            break;
+            if (next == NextState::GO_MATH) {
+                currentMode = make_unique<MathMode>();
+            } else if (next == NextState::GO_MEME) {
+                currentMode = make_unique<MemeMode>(cap67, capGrizman);
+            } else if (next == NextState::GO_MENU) {
+                currentMode = make_unique<MenuMode>();
+            } else if (next == NextState::EXIT) {
+                break;
+            }
+
+            imshow("Finger Math App", frame);
+            if (waitKey(1) == 27) break;
         }
 
-        imshow("Finger Math App", frame);
-        if (waitKey(1) == 27) break;
+        system("killall afplay 2>/dev/null");
+    } catch (const CameraException& e) {
+        cerr << "Camera Init Error: " << e.what() << endl;
+        return -1;
+    } catch (const exception& e) {
+        cerr << "Fatal Error: " << e.what() << endl;
+        return -1;
     }
-    system("killall afplay 2>/dev/null");
     return 0;
 }

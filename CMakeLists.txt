@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.17)
 project(cv)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew" "/usr/local")
 

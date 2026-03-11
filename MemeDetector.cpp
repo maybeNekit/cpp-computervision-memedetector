@@ -7,8 +7,8 @@
 using namespace cv;
 using namespace std;
 
-MemeType MemeDetector::detect(const deque<Point>& history, int fingers) {
-    if (history.size() < 5) return MEME_NONE;
+optional<MemeType> MemeDetector::detect(const deque<Point>& history, int fingers) {
+    if (history.size() < 5) return nullopt;
 
     vector<int> x_vals;
     vector<int> y_vals;
@@ -38,5 +38,5 @@ MemeType MemeDetector::detect(const deque<Point>& history, int fingers) {
         return MEME_GRIZMAN;
     }
 
-    return MEME_NONE;
+    return nullopt;
 }
