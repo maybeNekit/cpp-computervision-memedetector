@@ -3,9 +3,7 @@
 
 HandDetector::HandDetector() {
     std::string path = "haarcascade_frontalface_default.xml";
-    if (!faceDetector.load(path)) {
-         std::cerr << "WARNING: XML файл лица не найден! Поиск лиц будет отключен." << std::endl;
-    }
+
 }
 
 HandDetector::~HandDetector() {}
