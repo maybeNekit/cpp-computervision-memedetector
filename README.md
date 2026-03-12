@@ -1,6 +1,7 @@
 # Finger Math & Meme Detector (C++ / OpenCV)
 
 [![C++](https://img.shields.io/badge/C%2B%2B-23-blue.svg)](https://isocpp.org/) [![CMake](https://img.shields.io/badge/CMake-%3E%3D3.17-blueviolet.svg)](https://cmake.org/) [![OpenCV](https://img.shields.io/badge/OpenCV-%3E%3D4.0-lightgrey.svg)](https://opencv.org/) [![Platform-macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)]()
+[![Build](https://img.shields.io/badge/CI-none-lightgrey.svg)]() [![License](https://img.shields.io/badge/License-NONE-lightgrey.svg)]() [![Docker](https://img.shields.io/badge/Docker-ready-lightblue.svg)]()
 
 A small real-time computer-vision application written in modern C++ (C++23) that recognizes hand gestures from a webcam and provides two interactive modes:
 
@@ -10,6 +11,63 @@ A small real-time computer-vision application written in modern C++ (C++23) that
 The project uses OpenCV for camera capture, image processing, contour analysis and video playback. Unit tests are included (googletest is fetched automatically by CMake).
 
 ---
+
+<!-- LIVE DEMO GIF -->
+<p align="center">
+  <img src=".github/demo.gif" alt="Live demo (placeholder)" width="700" />
+  <br>
+  <em>If you add a demo.gif to .github/demo.gif it will be shown here automatically.</em>
+</p>
+
+## Interactive extras (cool stuff added)
+
+These quick additions make the repo more interactive and fun:
+
+- Live demo GIF placeholder — drop a .github/demo.gif and it appears above.
+- CI / Docker badges (placeholders) — link to your workflows and Docker Hub when you add them.
+- Interactive cheat sheet (<details> blocks) — quick controls, gesture cheat-sheet and tips in collapsible sections.
+- "Make your own meme" guide — how to record new clips and wire them into the app.
+- Quick Docker instructions — one-liners to build/run locally in a container (if you add a Dockerfile).
+
+<details>
+<summary><strong>Interactive cheat sheet — Controls & tips</strong></summary>
+
+- ESC — go back / exit
+- MENU buttons — hover/press with your hand over a button area
+- Finger Math:
+  - Place left and right hands into respective boxes in the bottom corners
+  - The app counts displayed fingers and shows the sum
+- Meme Detector:
+  - Vertical synchronized move (both hands up/down) — contributes to 67 combo
+  - Horizontal synchronized move (both hands left/right) — contributes to IVAN combo
+  - Hold specific static pose (2–3 fingers) — triggers GRIZMAN hold counter
+
+Tips for best results:
+- Use plain background and good lighting.
+- Prefer short-sleeves (no large patterns) so hand skin segmentation works.
+- Put face partly outside the ROI or let face cascade filter it out.
+</details>
+
+<details>
+<summary><strong>Gesture gallery (example gestures)</strong></summary>
+
+- Vertical sync: both hands move up/down together (fast motion)
+- Horizontal sync: both hands move left/right together with open palms (0 fingers) to trigger IVAN
+- Static hold: hold 2–3 fingers steady near palm center for a short duration to trigger GRIZMAN
+
+(You can add images to .github/gestures/ and reference them here for visual help.)
+</details>
+
+<details>
+<summary><strong>Make your own meme — quick guide</strong></summary>
+
+1. Add a short video (mp4/mov) to the repo root or a media folder.
+2. Update main.cpp to open your file as a VideoCapture (or pass an absolute path).
+3. In AppMode.cpp -> MemeMode::playVideo replace the audio filename / command if needed.
+4. Optionally modify MemeDetector::detect() heuristics to trigger on your gesture.
+
+Pro tip: keep clips <10s and small resolution (720p or less) for fast playback.
+</details>
 
 ## Features
 
@@ -116,6 +174,19 @@ If your system OpenCV package provides a non-standard CMake config path, point C
 - If meme videos do not play, ensure the video files (67.mov, grizman.mp4, ivanzolo.mp4) exist in the working directory or pass full paths when creating VideoCapture in main (the current code opens these by relative name).
 
 
+## Docker (optional quick-run)
+
+If you add a Dockerfile this example shows a minimal workflow:
+
+- Build:
+
+  docker build -t finger-meme .
+
+- Run (allow access to your host camera may require additional flags):
+
+  docker run --rm -it --device=/dev/video0 -v $(pwd):/app finger-meme
+
+
 ## Building with CLion
 
 - Open the project in CLion; CMakeLists.txt is configured to fetch googletest for tests automatically.
@@ -147,14 +218,17 @@ The project uses FetchContent to download googletest during configuration.
 - Bug reports, suggestions and PRs welcome. Keep changes small and focused.
 - If you improve the gesture detection heuristics or make audio/video playback cross-platform, please include platform-specific build/test notes.
 
-
+Quick contribution checklist:
+- Fork the repo
+- Create a feature branch
+- Run tests locally: `./cv_tests`
+- Open a PR with a clear description and small changes
 
 
 ## Acknowledgements
 
 - OpenCV (computer vision and video I/O)
 - Googletest for unit testing
-
 
 
 
