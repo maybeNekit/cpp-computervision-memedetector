@@ -11,13 +11,32 @@ find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 include_directories(.)
 
-add_executable(cv
-        main.cpp
+add_library(cv_core
         Camera.cpp
         Camera.h
         HandDetector.cpp
-        MemeDetector.h
+        HandDetector.h
         MemeDetector.cpp
+        MemeDetector.h
+        AppMode.h
 )
 
-target_link_libraries(cv ${OpenCV_LIBS})
+target_link_libraries(cv_core PUBLIC ${OpenCV_LIBS})
+
+add_executable(cv main.cpp)
+target_link_libraries(cv PRIVATE cv_core)
+
+include(FetchContent)
+FetchContent_Declare(
+        googletest
+        URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
+)
+FetchContent_MakeAvailable(googletest)
+
+enable_testing()
+
+add_executable(cv_tests test_main.cpp)
+target_link_libraries(cv_tests PRIVATE cv_core gtest_main)
+
+include(GoogleTest)
+gtest_discover_tests(cv_tests)
