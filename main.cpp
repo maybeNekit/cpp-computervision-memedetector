@@ -27,6 +27,7 @@ int main() {
             flip(frame, frame, 1);
 
             Mat globalMask = detector.detectHand(frame);
+
             NextState next = currentMode->update(frame, globalMask, detector, key);
 
             if (next == NextState::GO_MATH) currentMode = make_unique<MathMode>();

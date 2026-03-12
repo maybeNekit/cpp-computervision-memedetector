@@ -3,7 +3,9 @@
 
 HandDetector::HandDetector() {
     std::string path = "haarcascade_frontalface_default.xml";
-
+    if (!faceDetector.load(path)) {
+        std::cerr << "WARNING: XML file not found" << std::endl;
+    }
 }
 
 HandDetector::~HandDetector() {}
@@ -12,17 +14,14 @@ cv::Mat HandDetector::detectHand(cv::Mat inputFrame) {
     cv::Mat hsvImage, mask;
     cv::cvtColor(inputFrame, hsvImage, cv::COLOR_BGR2HSV);
 
-    // 1. ЦВЕТ
     cv::Scalar lower(0, 60, 60);
     cv::Scalar upper(20, 150, 255);
     cv::inRange(hsvImage, lower, upper, mask);
-
 
     cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
     cv::morphologyEx(mask, mask, cv::MORPH_OPEN, kernel);
     cv::dilate(mask, mask, kernel, cv::Point(-1,-1), 2);
     cv::GaussianBlur(mask, mask, cv::Size(5, 5), 0);
-
 
     if (!faceDetector.empty()) {
         std::vector<cv::Rect> faces;
