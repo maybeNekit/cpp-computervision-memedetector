@@ -5,9 +5,9 @@
 #include <vector>
 #include <algorithm>
 #include <map>
-#include <cstdlib> 
+#include <cstdlib>
 #include <ctime>
-#include <memory> 
+#include <memory>
 #include <optional>
 #include <variant>
 
@@ -224,7 +224,9 @@ private:
     HandState leftHandState;
     HandState rightHandState;
 public:
-    NextState update(cv::Mat& frame, cv::Mat& globalMask, HandDetector& detector) override {
+    NextState update(cv::Mat& frame, cv::Mat& globalMask, HandDetector& detector, int key) override {
+        if (key == 27) return NextState::EXIT;
+
         int w = frame.cols; int h = frame.rows;
         int btnW = 200; int btnH = 60; int gap = 20;
         int startX = w/2 - (btnW * 3 + gap * 2)/2;
@@ -267,7 +269,9 @@ private:
     HandState leftHandState;
     HandState rightHandState;
 public:
-    NextState update(cv::Mat& frame, cv::Mat& globalMask, HandDetector& detector) override {
+    NextState update(cv::Mat& frame, cv::Mat& globalMask, HandDetector& detector, int key) override {
+        if (key == 27) return NextState::GO_MENU;
+
         int w = frame.cols; int h = frame.rows;
         int boxSize = (h < 500) ? h - 50 : 450;
         Rect rectLeft(20, h - boxSize - 20, boxSize, boxSize);
@@ -311,22 +315,35 @@ private:
     MemeDetector memeDetector;
     shared_ptr<VideoCapture> cap67;
     shared_ptr<VideoCapture> capGrizman;
+    shared_ptr<VideoCapture> capIvanzolo;
     shared_ptr<VideoCapture> activeVideoCap = nullptr;
 
     bool isMemePlaying = false;
     int memeTriggerCount = 0;
+    int ivanzoloTriggerCount = 0;
     int moveCooldown = 0;
     int memeComboTimeout = 0;
     int grizmanHoldCounter = 0;
     const int GRIZMAN_HOLD_LIMIT = 20;
 
 public:
-    MemeMode(shared_ptr<VideoCapture> v67, shared_ptr<VideoCapture> vGriz) : cap67(v67), capGrizman(vGriz) {}
+    MemeMode(shared_ptr<VideoCapture> v67, shared_ptr<VideoCapture> vGriz, shared_ptr<VideoCapture> vIvan)
+        : cap67(v67), capGrizman(vGriz), capIvanzolo(vIvan) {}
 
-    NextState update(cv::Mat& frame, cv::Mat& globalMask, HandDetector& detector) override {
+    NextState update(cv::Mat& frame, cv::Mat& globalMask, HandDetector& detector, int key) override {
         int w = frame.cols; int h = frame.rows;
 
         if (isMemePlaying && activeVideoCap != nullptr) {
+            Button stopBtn(20, 20, 100, 40, "STOP");
+            bool pressStop = checkButtonPress(frame, stopBtn.rect, detector);
+            stopBtn.draw(frame, pressStop);
+
+            if (key == 27 || pressStop) {
+                if (pressStop) waitKey(300);
+                stopVideo();
+                return NextState::KEEP_CURRENT;
+            }
+
             Mat vFrame;
             *activeVideoCap >> vFrame;
             if (vFrame.empty()) {
@@ -334,10 +351,22 @@ public:
             } else {
                 Mat displayFrame;
                 resize(vFrame, displayFrame, Size(w, h));
-                imshow("Meme Player", displayFrame);
-                if (getWindowProperty("Meme Player", WND_PROP_VISIBLE) < 1) stopVideo();
+
+                try {
+                    imshow("Meme Player", displayFrame);
+                    if (getWindowProperty("Meme Player", WND_PROP_VISIBLE) < 1) {
+                        stopVideo();
+                    }
+                } catch (...) {
+                    stopVideo();
+                }
             }
             return NextState::KEEP_CURRENT;
+        }
+
+        if (key == 27) {
+            stopVideo();
+            return NextState::GO_MENU;
         }
 
         Button backBtn(20, 20, 100, 40, "MENU");
@@ -357,7 +386,9 @@ public:
         optional<MemeType> memeR = memeDetector.detect(rightHandState.positionHistory, rightHandState.displayedFingers);
 
         putText(frame, "DO A GESTURE!", Point(w/2 - 100, 100), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200,200,200), 2);
-        putText(frame, "WEIGH: " + to_string(memeTriggerCount) + "/4", Point(w/2 - 80, 140), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(0, 255, 255), 2);
+
+        string comboStatus = "67: " + to_string(memeTriggerCount) + "/4 | IVAN: " + to_string(ivanzoloTriggerCount) + "/3";
+        putText(frame, comboStatus, Point(w/2 - 140, 140), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(0, 255, 255), 2);
 
         if (grizmanHoldCounter > 0) {
             int filledWidth = min(200, (int)((float)grizmanHoldCounter / GRIZMAN_HOLD_LIMIT * 200));
@@ -368,21 +399,43 @@ public:
 
         int histL = leftHandState.positionHistory.size();
         int histR = rightHandState.positionHistory.size();
-        bool isSyncMove = false;
+        bool isSyncMoveVertical = false;
+        bool isSyncMoveHorizontal = false;
+
         if (histL > 3 && histR > 3) {
             int dyL = leftHandState.positionHistory.back().y - leftHandState.positionHistory[histL - 3].y;
             int dyR = rightHandState.positionHistory.back().y - rightHandState.positionHistory[histR - 3].y;
-            if (dyL * dyR < 0 && abs(dyL) > 35 && abs(dyR) > 35) isSyncMove = true;
+
+            int dxL = leftHandState.positionHistory.back().x - leftHandState.positionHistory[histL - 3].x;
+            int dxR = rightHandState.positionHistory.back().x - rightHandState.positionHistory[histR - 3].x;
+
+            if (dyL * dyR < 0 && abs(dyL) > 35 && abs(dyR) > 35) isSyncMoveVertical = true;
+            if (dxL * dxR > 0 && abs(dxL) > 35 && abs(dxR) > 35) isSyncMoveHorizontal = true;
         }
 
-        if (memeComboTimeout > 0) memeComboTimeout--; else memeTriggerCount = 0;
+        if (memeComboTimeout > 0) {
+            memeComboTimeout--;
+        } else {
+            memeTriggerCount = 0;
+            ivanzoloTriggerCount = 0;
+        }
+
         if (moveCooldown > 0) moveCooldown--;
 
-        if (memeL == MEME_67 && memeR == MEME_67 && isSyncMove && moveCooldown == 0) {
+        if (memeL == MEME_67 && memeR == MEME_67 && isSyncMoveVertical && moveCooldown == 0) {
             memeTriggerCount++;
             moveCooldown = 5;
             memeComboTimeout = 30;
             grizmanHoldCounter = 0;
+            ivanzoloTriggerCount = 0;
+        }
+
+        if (memeL == MEME_IVANZOLO && memeR == MEME_IVANZOLO && isSyncMoveHorizontal && moveCooldown == 0) {
+            ivanzoloTriggerCount++;
+            moveCooldown = 5;
+            memeComboTimeout = 30;
+            grizmanHoldCounter = 0;
+            memeTriggerCount = 0;
         }
 
         if (memeTriggerCount >= 4) {
@@ -390,9 +443,15 @@ public:
             memeTriggerCount = 0;
         }
 
+        if (ivanzoloTriggerCount >= 3) {
+            playVideo(capIvanzolo, "ivanzolo.mp4", w, h);
+            ivanzoloTriggerCount = 0;
+        }
+
         if (memeL == MEME_GRIZMAN || memeR == MEME_GRIZMAN) {
             grizmanHoldCounter += 1;
             memeTriggerCount = 0;
+            ivanzoloTriggerCount = 0;
         } else {
             grizmanHoldCounter = max(0, grizmanHoldCounter - 2);
         }
@@ -420,7 +479,9 @@ private:
 
     void stopVideo() {
         isMemePlaying = false;
-        if (getWindowProperty("Meme Player", WND_PROP_VISIBLE) >= 0) destroyWindow("Meme Player");
+        try {
+            destroyWindow("Meme Player");
+        } catch (...) {}
         system("killall afplay 2>/dev/null");
         activeVideoCap = nullptr;
     }
@@ -434,10 +495,13 @@ int main() {
 
         auto cap67 = make_shared<VideoCapture>("67.mov");
         auto capGrizman = make_shared<VideoCapture>("grizman.mp4");
+        auto capIvanzolo = make_shared<VideoCapture>("ivanzolo.mp4");
 
         unique_ptr<AppMode> currentMode = make_unique<MenuMode>();
 
         namedWindow("Finger Math App", WINDOW_NORMAL);
+
+        int key = -1;
 
         while (true) {
             Mat frame = myCam.getFrame();
@@ -446,12 +510,12 @@ int main() {
 
             Mat globalMask = detector.detectHand(frame);
 
-            NextState next = currentMode->update(frame, globalMask, detector);
+            NextState next = currentMode->update(frame, globalMask, detector, key);
 
             if (next == NextState::GO_MATH) {
                 currentMode = make_unique<MathMode>();
             } else if (next == NextState::GO_MEME) {
-                currentMode = make_unique<MemeMode>(cap67, capGrizman);
+                currentMode = make_unique<MemeMode>(cap67, capGrizman, capIvanzolo);
             } else if (next == NextState::GO_MENU) {
                 currentMode = make_unique<MenuMode>();
             } else if (next == NextState::EXIT) {
@@ -459,7 +523,7 @@ int main() {
             }
 
             imshow("Finger Math App", frame);
-            if (waitKey(1) == 27) break;
+            key = waitKey(1);
         }
 
         system("killall afplay 2>/dev/null");

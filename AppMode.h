@@ -9,8 +9,9 @@ enum class NextState {
     GO_MEME,
     EXIT
 };
+
 class AppMode {
 public:
-    virtual ~AppMode() = default; 
-    virtual NextState update(cv::Mat& frame, cv::Mat& globalMask, HandDetector& detector) = 0;
+    virtual ~AppMode() = default;
+    virtual NextState update(cv::Mat& frame, cv::Mat& globalMask, HandDetector& detector, int key) = 0;
 };

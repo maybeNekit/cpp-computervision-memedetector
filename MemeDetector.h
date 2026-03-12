@@ -6,7 +6,8 @@
 
 enum MemeType {
     MEME_67,
-    MEME_GRIZMAN
+    MEME_GRIZMAN,
+    MEME_IVANZOLO
 };
 
 class MemeDetector {

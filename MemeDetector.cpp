@@ -25,10 +25,17 @@ optional<MemeType> MemeDetector::detect(const deque<Point>& history, int fingers
     double deltaY = *minmax_y.second - *minmax_y.first;
 
     bool isVerticalMotion = deltaY > deltaX * 1.2;
-    bool isSignificant = deltaY > 35;
+    bool isSignificantY = deltaY > 35;
 
-    if (isVerticalMotion && isSignificant) {
+    if (isVerticalMotion && isSignificantY) {
         return MEME_67;
+    }
+
+    bool isHorizontalMotion = deltaX > deltaY * 1.2;
+    bool isSignificantX = deltaX > 35;
+
+    if (isHorizontalMotion && isSignificantX && fingers == 0) {
+        return MEME_IVANZOLO;
     }
 
     bool isStatic = deltaX < 40 && deltaY < 40;
