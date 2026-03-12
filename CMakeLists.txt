@@ -18,12 +18,18 @@ add_library(cv_core
         HandDetector.h
         MemeDetector.cpp
         MemeDetector.h
+        AppMode.cpp
         AppMode.h
+        MathUtils.cpp
+        MathUtils.h
+        HandState.cpp
+        HandState.h
 )
 
 target_link_libraries(cv_core PUBLIC ${OpenCV_LIBS})
 
-add_executable(cv main.cpp)
+add_executable(cv main.cpp
+        AppMode.cpp)
 target_link_libraries(cv PRIVATE cv_core)
 
 include(FetchContent)
