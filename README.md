@@ -1,7 +1,7 @@
 # Finger Math & Meme Detector (C++ / OpenCV)
 
 [![C++](https://img.shields.io/badge/C%2B%2B-23-blue.svg)](https://isocpp.org/) [![CMake](https://img.shields.io/badge/CMake-%3E%3D3.17-blueviolet.svg)](https://cmake.org/) [![OpenCV](https://img.shields.io/badge/OpenCV-%3E%3D4.0-lightgrey.svg)](https://opencv.org/) [![Platform-macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)]()
-[![Build](https://img.shields.io/badge/CI-none-lightgrey.svg)]() [![License](https://img.shields.io/badge/License-NONE-lightgrey.svg)]() [![Docker](https://img.shields.io/badge/Docker-ready-lightblue.svg)]()
+ 
 
 A small real-time computer-vision application written in modern C++ (C++23) that recognizes hand gestures from a webcam and provides two interactive modes:
 
