@@ -1,13 +1,29 @@
-# Игнорировать папку сборки (она создается у каждого своя)
-cmake-build-debug/
-cmake-build-release/
+# Сборка CMake
+cmake-build-*/
 build/
+CMakeCache.txt
+CMakeFiles/
+Makefile
 
-# Игнорировать настройки IDE (у каждого свои шрифты, пути и т.д.)
+# Настройки IDE (CLion, VSCode и др.)
 .idea/
 .vscode/
-*.swp
-*.DS_Store
+*.user
 
-# Игнорировать скомпилированные файлы
+# Объектные файлы и бинарники (чтобы не засорять репозиторий)
 *.o
+*.obj
+*.a
+*.dylib
+*.so
+*.dll
+*.exe
+*.out
+*.app
+
+# Исполняемые файлы (на случай, если сборка произойдет в корне)
+cv
+cv_tests
+
+# Системные файлы macOS
+.DS_Store
