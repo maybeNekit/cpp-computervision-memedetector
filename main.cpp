@@ -9,6 +9,7 @@
 #include <ctime>
 #include <memory> 
 #include <optional>
+#include <variant>
 
 #include "Camera.h"
 #include "HandDetector.h"
@@ -205,6 +206,19 @@ struct Button {
     }
 };
 
+struct MathEvent {};
+struct MemeEvent {};
+struct ExitEvent {};
+struct NoneEvent {};
+using UIEvent = std::variant<MathEvent, MemeEvent, ExitEvent, NoneEvent>;
+
+struct EventVisitor {
+    NextState operator()(MathEvent) { waitKey(300); return NextState::GO_MATH; }
+    NextState operator()(MemeEvent) { waitKey(300); return NextState::GO_MEME; }
+    NextState operator()(ExitEvent) { return NextState::EXIT; }
+    NextState operator()(NoneEvent) { return NextState::KEEP_CURRENT; }
+};
+
 class MenuMode : public AppMode {
 private:
     HandState leftHandState;
@@ -223,6 +237,11 @@ public:
         bool pressMeme = checkButtonPress(frame, memeBtn.rect, detector);
         bool pressExit = checkButtonPress(frame, exitBtn.rect, detector);
 
+        UIEvent event = NoneEvent{};
+        if (pressMath) event = MathEvent{};
+        else if (pressMeme) event = MemeEvent{};
+        else if (pressExit) event = ExitEvent{};
+
         mathBtn.draw(frame, pressMath);
         memeBtn.draw(frame, pressMeme);
         exitBtn.draw(frame, pressExit);
@@ -239,11 +258,7 @@ public:
 
         putText(frame, "SELECT MODE", Point(w/2 - 130, h/2), FONT_HERSHEY_SIMPLEX, 1, Scalar(255,255,255), 2);
 
-        if (pressMath) { waitKey(300); return NextState::GO_MATH; }
-        if (pressMeme) { waitKey(300); return NextState::GO_MEME; }
-        if (pressExit) return NextState::EXIT;
-
-        return NextState::KEEP_CURRENT;
+        return std::visit(EventVisitor{}, event);
     }
 };
 
@@ -294,9 +309,9 @@ private:
     HandState leftHandState;
     HandState rightHandState;
     MemeDetector memeDetector;
-    VideoCapture& cap67;
-    VideoCapture& capGrizman;
-    VideoCapture* activeVideoCap = nullptr;
+    shared_ptr<VideoCapture> cap67;
+    shared_ptr<VideoCapture> capGrizman;
+    shared_ptr<VideoCapture> activeVideoCap = nullptr;
 
     bool isMemePlaying = false;
     int memeTriggerCount = 0;
@@ -306,7 +321,7 @@ private:
     const int GRIZMAN_HOLD_LIMIT = 20;
 
 public:
-    MemeMode(VideoCapture& v67, VideoCapture& vGriz) : cap67(v67), capGrizman(vGriz) {}
+    MemeMode(shared_ptr<VideoCapture> v67, shared_ptr<VideoCapture> vGriz) : cap67(v67), capGrizman(vGriz) {}
 
     NextState update(cv::Mat& frame, cv::Mat& globalMask, HandDetector& detector) override {
         int w = frame.cols; int h = frame.rows;
@@ -371,7 +386,7 @@ public:
         }
 
         if (memeTriggerCount >= 4) {
-            playVideo(&cap67, "67.mov", w, h);
+            playVideo(cap67, "67.mov", w, h);
             memeTriggerCount = 0;
         }
 
@@ -383,7 +398,7 @@ public:
         }
 
         if (grizmanHoldCounter >= GRIZMAN_HOLD_LIMIT) {
-            playVideo(&capGrizman, "grizman.mp4", w, h);
+            playVideo(capGrizman, "grizman.mp4", w, h);
             grizmanHoldCounter = 0;
         }
 
@@ -392,7 +407,7 @@ public:
     }
 
 private:
-    void playVideo(VideoCapture* cap, const string& audioFile, int w, int h) {
+    void playVideo(shared_ptr<VideoCapture> cap, const string& audioFile, int w, int h) {
         isMemePlaying = true;
         activeVideoCap = cap;
         activeVideoCap->set(CAP_PROP_POS_FRAMES, 0);
@@ -417,8 +432,8 @@ int main() {
         Camera myCam;
         HandDetector detector;
 
-        VideoCapture cap67("67.mov");
-        VideoCapture capGrizman("grizman.mp4");
+        auto cap67 = make_shared<VideoCapture>("67.mov");
+        auto capGrizman = make_shared<VideoCapture>("grizman.mp4");
 
         unique_ptr<AppMode> currentMode = make_unique<MenuMode>();
 
