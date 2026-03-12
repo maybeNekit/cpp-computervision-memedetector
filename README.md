@@ -148,9 +148,6 @@ The project uses FetchContent to download googletest during configuration.
 - If you improve the gesture detection heuristics or make audio/video playback cross-platform, please include platform-specific build/test notes.
 
 
-## License
-
-No license file is provided in the repository. Add a LICENSE file if you want to apply a specific license.
 
 
 ## Acknowledgements
@@ -159,10 +156,5 @@ No license file is provided in the repository. Add a LICENSE file if you want to
 - Googletest for unit testing
 
 
----
-
-If you want, I can:
-- add a sample GitHub Actions workflow for CI building and running tests,
-- replace macOS-only `afplay` calls with a cross-platform approach (ffmpeg/ffplay) and update the code.
 
 
